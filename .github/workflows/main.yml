@@ -41,6 +41,15 @@ jobs:
           Write-Host "VS installer exit code $LASTEXITCODE; arguments: $($modifyArgs -join ' ')"
           throw "VS installer failed with exit code $LASTEXITCODE"
         }
+        $atlmfc = "$installPath/VC/Tools/MSVC/$($toolset.Name)/atlmfc"
+        if (-not (Test-Path "$atlmfc/lib") -and -not (Test-Path "$atlmfc/include")) {
+          Write-Host 'atlmfc missing after install; last installer log lines:'
+          Get-ChildItem $env:TEMP -Filter 'dd_installer_*.log' -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1 |
+            ForEach-Object { Get-Content $_.FullName -Tail 80 }
+          throw "MFC was not written to $atlmfc although the installer succeeded"
+        }
+        Write-Host "MFC present at $atlmfc"
 
 
       
@@ -118,6 +127,15 @@ jobs:
           Write-Host "VS installer exit code $LASTEXITCODE; arguments: $($modifyArgs -join ' ')"
           throw "VS installer failed with exit code $LASTEXITCODE"
         }
+        $atlmfc = "$installPath/VC/Tools/MSVC/$($toolset.Name)/atlmfc"
+        if (-not (Test-Path "$atlmfc/lib") -and -not (Test-Path "$atlmfc/include")) {
+          Write-Host 'atlmfc missing after install; last installer log lines:'
+          Get-ChildItem $env:TEMP -Filter 'dd_installer_*.log' -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1 |
+            ForEach-Object { Get-Content $_.FullName -Tail 80 }
+          throw "MFC was not written to $atlmfc although the installer succeeded"
+        }
+        Write-Host "MFC present at $atlmfc"
 
 
       
@@ -187,7 +205,7 @@ jobs:
         (& $vswhere -latest -products * -format json | ConvertFrom-Json)[0].packages |
           Where-Object { $_.id -like '*MFC*' } | ForEach-Object { Write-Host $_.id }
         $components = @("Microsoft.VisualStudio.Component.VC.$($toolset.Name).MFC.x86.x64")
-        $components += 'Microsoft.VisualStudio.Component.VC.$($toolset.Name).MFC.ARM64EC'
+        $components += "Microsoft.VisualStudio.Component.VC.$($toolset.Name).MFC.ARM64EC"
         Write-Host "Installing MFC for $($toolset.Name): $($components -join ', ')"
         $modifyArgs = @('modify', '--installPath', $installPath, '--quiet', '--norestart', '--noresume')
         foreach ($component in $components) { $modifyArgs += @('--add', $component) }
@@ -196,6 +214,15 @@ jobs:
           Write-Host "VS installer exit code $LASTEXITCODE; arguments: $($modifyArgs -join ' ')"
           throw "VS installer failed with exit code $LASTEXITCODE"
         }
+        $atlmfc = "$installPath/VC/Tools/MSVC/$($toolset.Name)/atlmfc"
+        if (-not (Test-Path "$atlmfc/lib") -and -not (Test-Path "$atlmfc/include")) {
+          Write-Host 'atlmfc missing after install; last installer log lines:'
+          Get-ChildItem $env:TEMP -Filter 'dd_installer_*.log' -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending | Select-Object -First 1 |
+            ForEach-Object { Get-Content $_.FullName -Tail 80 }
+          throw "MFC was not written to $atlmfc although the installer succeeded"
+        }
+        Write-Host "MFC present at $atlmfc"
 
 
       
