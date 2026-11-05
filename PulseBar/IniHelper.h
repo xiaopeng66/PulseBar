@@ -35,7 +35,7 @@ public:
     void GetStringList(const wchar_t* AppName, const wchar_t* KeyName, vector<wstring>& values, const vector<wstring>& default_value) const;
 
     // 获取带有指定前缀的所有AppName（不含前缀）
-    vector<wstring> GetAllAppName(const wstring& prefix) const;
+    vector<wstring> GetAllAppName(const wstring& prefix, bool* valid = nullptr) const;
     // 获取一个AppName下所有键值对
     void GetAllKeyValues(const wstring& AppName, std::map<wstring, wstring>& map) const;
 

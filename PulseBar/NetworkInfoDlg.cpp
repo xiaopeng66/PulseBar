@@ -49,8 +49,13 @@ static void GetInternetIPForLookup(wstring& address, wstring& location, bool ipv
         string response;
         char buffer[4096];
         UINT count{};
+        constexpr size_t max_response_bytes = 64 * 1024;
         while ((count = file->Read(buffer, sizeof(buffer))) != 0)
+        {
+            if (count > max_response_bytes - response.size())
+                return;
             response.append(buffer, count);
+        }
         const wstring json = CCommon::StrToUnicode(response.c_str(), true);
         address = CCommon::GetJsonValueSimple(json, L"ip");
         location = CCommon::GetJsonValueSimple(json, L"location");
@@ -203,9 +208,12 @@ MIB_IFROW& CNetworkInfoDlg::GetConnectIfTable(int connection_index)
     static MIB_IFROW nouse{};
     if (connection_index >= 0 && connection_index < static_cast<int>(m_connections.size()))
     {
-        const int index = m_connections[connection_index].index;
-        if (index >= 0 && index < static_cast<int>(m_if_rows.size()))
-            return m_if_rows[index];
+        const auto interface_index = m_connections[connection_index].interface_index;
+        for (auto& row : m_if_rows)
+        {
+            if (interface_index != 0 && row.dwIndex == interface_index)
+                return row;
+        }
     }
     return nouse;
 }
@@ -231,13 +239,30 @@ UINT CNetworkInfoDlg::GetInternetIPThreadFunc(LPVOID lpParam)
 
     wstring ipv4_address;
     wstring ipv4_location;
-    GetInternetIPForLookup(ipv4_address, ipv4_location, false);
-    if (state->cancelled.load(std::memory_order_acquire))
-        return 0;
-
     wstring ipv6_address;
     wstring ipv6_location;
-    GetInternetIPForLookup(ipv6_address, ipv6_location, true);
+    auto request = [&](wstring& address, wstring& location, bool ipv6) {
+        try
+        {
+            GetInternetIPForLookup(address, location, ipv6);
+        }
+        catch (CException* exception)
+        {
+            exception->Delete();
+            address.clear();
+            location.clear();
+        }
+        catch (...)
+        {
+            // The detached worker must always publish failure instead of escaping.
+            address.clear();
+            location.clear();
+        }
+    };
+    request(ipv4_address, ipv4_location, false);
+    if (state->cancelled.load(std::memory_order_acquire))
+        return 0;
+    request(ipv6_address, ipv6_location, true);
     if (state->cancelled.load(std::memory_order_acquire))
         return 0;
 

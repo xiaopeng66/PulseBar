@@ -1,6 +1,8 @@
 #include "stdafx.h"
 #include "HistoryTrafficFile.h"
 #include "Common.h"
+#include "AtomicFile.h"
+#include <sstream>
 
 CHistoryTrafficFile::CHistoryTrafficFile(const wstring& file_path)
 	: m_file_path(file_path)
@@ -25,7 +27,7 @@ HistoryTraffic CHistoryTrafficFile::CreateTodayTraffic() const
 	return today_traffic;
 }
 
-void CHistoryTrafficFile::WriteTrafficRecord(ofstream& file, const HistoryTraffic& traffic) const
+void CHistoryTrafficFile::WriteTrafficRecord(std::ostream& file, const HistoryTraffic& traffic) const
 {
 	char buff[64];
 	if (traffic.mixed)
@@ -38,7 +40,7 @@ void CHistoryTrafficFile::WriteTrafficRecord(ofstream& file, const HistoryTraffi
 		sprintf_s(buff, "%.4d/%.2d/%.2d %llu/%llu", traffic.year, traffic.month, 
 			traffic.day, traffic.up_kBytes, traffic.down_kBytes);
 	}
-	file << buff << "\n";
+	file << buff << "\r\n";
 }
 
 void CHistoryTrafficFile::UpdateCache() const
@@ -50,31 +52,36 @@ void CHistoryTrafficFile::UpdateCache() const
 	m_cache_dirty = false; // 标记缓存已更新
 }
 
-void CHistoryTrafficFile::Save() const
+std::string CHistoryTrafficFile::Serialize() const
 {
-	ofstream file{ m_file_path };
-	if (!file.is_open())
-	{
-		return;
-	}
-
+	std::ostringstream file;
 	char buff[64];
-	
-	// 第一行：总记录数（今天的记录 + 历史记录）
-	size_t total_size = 1 + m_history_traffics.size();
+	const size_t total_size = 1 + m_history_traffics.size();
 	sprintf_s(buff, "lines: \"%u\"", static_cast<unsigned int>(total_size));
-	file << buff << "\n";
-
-	// 第二行：今天的记录
+	file << buff << "\r\n";
 	WriteTrafficRecord(file, m_today_traffic);
+	for (const auto& traffic : m_history_traffics)
+		WriteTrafficRecord(file, traffic);
+	return file.str();
+}
 
-	// 第三行及之后：历史记录链表
-	for (const auto& history_traffic : m_history_traffics)
-	{
-		WriteTrafficRecord(file, history_traffic);
-	}
+bool CHistoryTrafficFile::Save() const
+{
+	m_last_save_succeeded = false;
+	if (!m_load_succeeded)
+		return false;
+	const std::string bytes = Serialize();
+	m_last_save_succeeded = CAtomicFile::Save(m_file_path, bytes);
+	if (m_last_save_succeeded)
+		m_last_saved_bytes = bytes;
+	return m_last_save_succeeded;
+}
 
-	file.close();
+bool CHistoryTrafficFile::SaveBackup() const
+{
+	if (!m_last_save_succeeded || !m_backup_save_allowed)
+		return false;
+	return CAtomicFile::Save(m_file_path + L".bak", m_last_saved_bytes);
 }
 
 bool CHistoryTrafficFile::IsTodayRecord() const
@@ -88,145 +95,119 @@ bool CHistoryTrafficFile::IsTodayRecord() const
 			m_today_traffic.day == current_time.wDay);
 }
 
-void CHistoryTrafficFile::SaveTodayOnly() const
+bool CHistoryTrafficFile::SaveTodayOnly() const
 {
-	// 增量保存：只更新第一行（lines计数）和第二行（今天的记录）
-	// 前提：今天的记录日期正确（程序自己维护，无需读取文件判断）
-	
-	// 如果今天的记录日期不正确，说明日期刚改变，使用完整保存
-	if (!IsTodayRecord())
-	{
-		Save();
-		return;
-	}
-
-	// 文件不存在时，使用完整保存（首次保存）
-	if (!CCommon::FileExist(m_file_path.c_str()))
-	{
-		Save();
-		return;
-	}
-
-	// 读取文件剩余行（第3行及之后），用于增量更新
-	vector<string> remaining_lines;
-	ifstream in_file{ m_file_path };
-	if (in_file.is_open())
-	{
-		string line;
-		int line_num = 0;
-		while (std::getline(in_file, line))
-		{
-			line_num++;
-			if (line_num > 2) // 跳过前两行
-			{
-				remaining_lines.push_back(line);
-			}
-		}
-		in_file.close();
-	}
-
-	// 写入更新后的文件
-	ofstream out_file{ m_file_path };
-	if (!out_file.is_open())
-	{
-		return;
-	}
-
-	// 第一行：lines计数（今天的记录 + 历史记录）
-	size_t total_size = 1 + m_history_traffics.size();
-	char buff[64];
-	sprintf_s(buff, "lines: \"%u\"", static_cast<unsigned int>(total_size));
-	out_file << buff << "\n";
-
-	// 第二行：今天的记录
-	WriteTrafficRecord(out_file, m_today_traffic);
-
-	// 剩余行：从文件读取，直接写入（不格式化）
-	for (const auto& line : remaining_lines)
-	{
-		out_file << line << "\n";
-	}
-
-	out_file.close();
+	// 跨日后磁盘第二行仍可能是昨天，始终保存完整内存快照。
+	return Save();
 }
 
-void CHistoryTrafficFile::Load()
+bool CHistoryTrafficFile::Load(bool* missing)
 {
-	m_today_traffic = HistoryTraffic{}; // 初始化今天的记录
-	m_history_traffics.clear(); // 清空历史记录链表
-	InvalidateCache(); // 标记缓存过期
-
-	ifstream file{ m_file_path };
-	string current_line, temp;
-	HistoryTraffic traffic;
-	bool is_first_data_line = true; // 标记是否是第一条数据行（今天的记录）
-	
-	if (CCommon::FileExist(m_file_path.c_str()))
+	if (missing != nullptr)
+		*missing = false;
+	m_backup_save_allowed = true;
+	m_last_save_succeeded = false;
+	const DWORD attributes = ::GetFileAttributesW(m_file_path.c_str());
+	if (attributes == INVALID_FILE_ATTRIBUTES)
 	{
-		// 跳过第一行（lines:）
-		std::getline(file, current_line);
-		
-		while (!file.eof())
+		const DWORD error = ::GetLastError();
+		if (error != ERROR_FILE_NOT_FOUND && error != ERROR_PATH_NOT_FOUND)
 		{
-			std::getline(file, current_line);
-
-			if (current_line.size() < 12)
-			{
-				continue;
-			}
-			temp = current_line.substr(0, 4);
-			traffic.year = atoi(temp.c_str());
-			if (traffic.year < 1900 || traffic.year > 3000)
-			{
-				continue;
-			}
-			temp = current_line.substr(5, 2);
-			traffic.month = atoi(temp.c_str());
-			if (traffic.month < 1 || traffic.month > 12)
-			{
-				continue;
-			}
-			temp = current_line.substr(8, 2);
-			traffic.day = atoi(temp.c_str());
-			if (traffic.day < 1 || traffic.day > 31)
-			{
-				continue;
-			}
-
-			size_t separator_index = current_line.find(L'/', 11);
-			traffic.mixed = (separator_index == wstring::npos);
-			if (traffic.mixed)
-			{
-				temp = current_line.substr(11);
-				traffic.down_kBytes = atoll(temp.c_str());
-				traffic.up_kBytes = 0;
-			}
-			else
-			{
-				temp = current_line.substr(11, separator_index - 11);
-				traffic.up_kBytes = atoll(temp.c_str());
-				temp = current_line.substr(separator_index + 1);
-				traffic.down_kBytes = atoll(temp.c_str());
-			}
-			
-			if (traffic.year > 0 && traffic.month > 0 && traffic.day > 0 && traffic.kBytes() > 0)
-			{
-				if (is_first_data_line)
-				{
-					// 第一条数据行是今天的记录
-					m_today_traffic = traffic;
-					is_first_data_line = false;
-				}
-				else
-				{
-					// 其余是历史记录，插入到链表
-					m_history_traffics.push_back(traffic);
-				}
-			}
+			m_load_succeeded = false;
+			return false;
 		}
+		if (missing != nullptr)
+			*missing = true;
+		m_today_traffic = CreateTodayTraffic();
+		m_history_traffics.clear();
+		MormalizeData();
+		m_load_succeeded = true;
+		return true;
 	}
 
-	MormalizeData();
+	m_load_succeeded = false;
+	if ((attributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0)
+		return false;
+	std::ifstream file(m_file_path);
+	if (!file.is_open())
+		return false;
+	std::string line;
+	if (!std::getline(file, line) || line.compare(0, 7, "lines: ") != 0)
+		return false;
+	const size_t count_start = line.find('"', 7);
+	const size_t count_end = count_start == std::string::npos ? std::string::npos : line.find('"', count_start + 1);
+	if (count_start == std::string::npos || count_end == std::string::npos || count_end == count_start + 1)
+		return false;
+	for (size_t i = count_start + 1; i < count_end; ++i)
+		if (line[i] < '0' || line[i] > '9')
+			return false;
+
+	unsigned long long expected_records{};
+	std::istringstream count_stream(line.substr(count_start + 1, count_end - count_start - 1));
+	if (!(count_stream >> expected_records))
+		return false;
+	CHistoryTrafficFile loaded(m_file_path);
+	loaded.m_today_traffic = loaded.CreateTodayTraffic();
+	bool first = true;
+	unsigned long long parsed_records{};
+	while (std::getline(file, line))
+	{
+		if (line.empty() || line == "\r")
+			continue;
+		if (line.size() < 12 || line[4] != '/' || line[7] != '/' || line[10] != ' ')
+			return false;
+		HistoryTraffic traffic;
+		for (size_t i : { size_t(0), size_t(1), size_t(2), size_t(3), size_t(5), size_t(6), size_t(8), size_t(9) })
+			if (line[i] < '0' || line[i] > '9')
+				return false;
+		traffic.year = atoi(line.substr(0, 4).c_str());
+		traffic.month = atoi(line.substr(5, 2).c_str());
+		traffic.day = atoi(line.substr(8, 2).c_str());
+		if (traffic.year < 1900 || traffic.year > 3000 || traffic.month < 1 || traffic.month > 12
+			|| traffic.day < 1 || traffic.day > 31)
+			return false;
+
+		std::istringstream values(line.substr(11));
+		if (values.peek() < '0' || values.peek() > '9')
+			return false;
+		unsigned long long value{};
+		if (!(values >> value))
+			return false;
+		traffic.mixed = values.peek() != '/';
+		if (traffic.mixed)
+			traffic.down_kBytes = value;
+		else
+		{
+			values.get();
+			traffic.up_kBytes = value;
+			if (values.peek() < '0' || values.peek() > '9' || !(values >> traffic.down_kBytes))
+				return false;
+		}
+		values >> std::ws;
+		if (!values.eof())
+			return false;
+		++parsed_records;
+		if (traffic.kBytes() == 0)
+			continue;
+		if (first)
+		{
+			loaded.m_today_traffic = traffic;
+			first = false;
+		}
+		else
+			loaded.m_history_traffics.push_back(traffic);
+	}
+	if (file.bad() || !file.eof() || parsed_records != expected_records)
+		return false;
+	loaded.MormalizeData();
+	m_today_traffic = loaded.m_today_traffic;
+	m_history_traffics.swap(loaded.m_history_traffics);
+	m_today_up_traffic = loaded.m_today_up_traffic;
+	m_today_down_traffic = loaded.m_today_down_traffic;
+	m_size = loaded.m_size;
+	InvalidateCache();
+	m_load_succeeded = true;
+	return true;
 }
 
 void CHistoryTrafficFile::LoadSize()
@@ -302,6 +283,13 @@ void CHistoryTrafficFile::Merge(const CHistoryTrafficFile& history_traffic, bool
 	
 	MormalizeData();
 	InvalidateCache(); // 标记缓存过期
+}
+
+void CHistoryTrafficFile::SetTodayTrafficKBytes(unsigned __int64 up_kbytes, unsigned __int64 down_kbytes)
+{
+	m_today_traffic.up_kBytes = up_kbytes;
+	m_today_traffic.down_kBytes = down_kbytes;
+	InvalidateCache();
 }
 
 void CHistoryTrafficFile::OnDateChanged()

@@ -503,7 +503,8 @@ void CSpeedGraphTip::Draw(CDC& dc, const CRect& rect)
                 for (int i = 0; i < SAMPLE_COUNT; i++)
                 {
                     pts[i].X = curve.left + (int)((__int64)curve.Width() * i / (SAMPLE_COUNT - 1));
-                    pts[i].Y = curve.bottom - min(usable_h, curve.Height() * vals[i] / 100);
+                    const int percent = max(0, min(100, vals[i]));
+                    pts[i].Y = curve.bottom - usable_h * percent / 100;
                 }
                 pts[SAMPLE_COUNT].X = curve.right; pts[SAMPLE_COUNT].Y = curve.bottom;
                 pts[SAMPLE_COUNT + 1].X = curve.left; pts[SAMPLE_COUNT + 1].Y = curve.bottom;

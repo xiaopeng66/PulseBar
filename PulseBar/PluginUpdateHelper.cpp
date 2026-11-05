@@ -88,7 +88,6 @@ int PluginVersion::GetSubVersion(size_t index) const
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 bool CPluginUpdateHelper::CheckForUpdate()
 {
-    m_latest_versions.clear();
     std::wstring url;
     //更新源为Gitee
     if (theApp.m_general_data.update_source == 1)
@@ -99,30 +98,32 @@ bool CPluginUpdateHelper::CheckForUpdate()
 
     //获取url内容
     std::string version_info;
-    if (CCommon::GetURL(url, version_info))
-    {
-        //解析xml，获取版本信息
-        tinyxml2::XMLDocument doc;
-        doc.Parse(version_info.c_str(), version_info.size());
-        //遍历插件版本
-        CTinyXml2Helper::IterateChildNode(doc.RootElement(), [&](tinyxml2::XMLElement* ele) {
-            std::wstring file_name = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "file_name"));
-            std::string plugin_version(CTinyXml2Helper::ElementAttribute(ele, "version"));
-            PluginVersion version(plugin_version);
-            m_latest_versions.emplace(file_name, version);
-        });
-        return true;
-    }
-    return false;
+    if (!CCommon::GetURL(url, version_info))
+        return false;       //下载失败时保留上一次成功的版本表，不清空
+
+    //在局部表中完成解析，成功后在锁内一次性替换共享表。
+    //旧实现先 clear 共享表再边解析边 emplace，UI 线程的查询在整段
+    //网络窗口内都能撞上重建中的 map（悬空引用/迭代器失效）。
+    tinyxml2::XMLDocument doc;
+    doc.Parse(version_info.c_str(), version_info.size());
+    std::map<std::wstring, PluginVersion> latest_versions;
+    CTinyXml2Helper::IterateChildNode(doc.RootElement(), [&](tinyxml2::XMLElement* ele) {
+        std::wstring file_name = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "file_name"));
+        std::string plugin_version(CTinyXml2Helper::ElementAttribute(ele, "version"));
+        latest_versions.emplace(std::move(file_name), PluginVersion(std::move(plugin_version)));
+    });
+    std::lock_guard<std::mutex> lock(m_version_mutex);
+    m_latest_versions.swap(latest_versions);
+    return true;
 }
 
-const PluginVersion& CPluginUpdateHelper::GetPluginLatestVersions(const std::wstring& file_name) const
+PluginVersion CPluginUpdateHelper::GetPluginLatestVersions(const std::wstring& file_name) const
 {
+    std::lock_guard<std::mutex> lock(m_version_mutex);
     auto iter = m_latest_versions.find(file_name);
     if (iter != m_latest_versions.end())
     {
         return iter->second;
     }
-    static PluginVersion empty_version;
-    return empty_version;
+    return PluginVersion();
 }

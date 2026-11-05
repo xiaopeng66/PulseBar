@@ -101,7 +101,7 @@ using std::ofstream;
 #define APP_DISPLAY_NAME _T("PulseBar")
 #define TASKBAR_WINDOW_NAME _T("TrafficMonitorTaskbarWindow")
 #define APP_CLASS_NAME _T("TrafficMonitor_r7XZaS4p") //程序主窗口的类名
-#define VERSION L"1.0.0"
+#define VERSION L"1.1.0"
 #define COPYRITE_YEAR L"2017-2026"
 
 #define MAX_NOTIFY_ICON 3       //PulseBar 图标资源数（蓝色、浅色、深色）

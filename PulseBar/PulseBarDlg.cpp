@@ -218,6 +218,8 @@ BEGIN_MESSAGE_MAP(CPulseBarDlg, CDialog)
     ON_MESSAGE(WM_TABLET_QUERYSYSTEMGESTURESTATUS, &CPulseBarDlg::OnTabletQuerysystemgesturestatus)
     ON_COMMAND(ID_PLUGIN_OPTIONS_TASKBAR, &CPulseBarDlg::OnPluginOptionsTaksbar)
     ON_COMMAND(ID_PLUGIN_DETAIL_TASKBAR, &CPulseBarDlg::OnPluginDetailTaksbar)
+    //托盘“插件”子菜单的命令按固定区间路由到插件索引，不经过任务栏点击状态。
+    ON_COMMAND_RANGE(ID_PLUGIN_TRAY_START, ID_PLUGIN_TRAY_MAX, &CPulseBarDlg::OnPluginTrayCommand)
     ON_WM_POWERBROADCAST()
     ON_WM_DWMCOLORIZATIONCOLORCHANGED()
 
@@ -545,7 +547,7 @@ void CPulseBarDlg::IniConnection()
 
     m_restart_cnt++;    //记录初始化次数
 
-    m_connection_change_flag = true;
+    //映射刷新不代表用户切换采样范围；按 LUID 保留正常接口的连续基线。
 
 }
 
@@ -556,16 +558,15 @@ MIB_IFROW CPulseBarDlg::GetConnectIfTable(int connection_index)
 {
     CSingleLock connection_lock(&m_connection_lock, TRUE);
 
-    if (connection_index >= 0 && connection_index < static_cast<int>(m_connections.size()))
-
+    if (connection_index >= 0 && connection_index < static_cast<int>(m_connections.size())
+        && m_pIfTable != nullptr)
     {
-
-        int index = m_connections[connection_index].index;
-
-        if (m_pIfTable != nullptr && index >= 0 && index < m_pIfTable->dwNumEntries)
-
-            return m_pIfTable->table[index];
-
+        const auto interface_index = m_connections[connection_index].interface_index;
+        for (DWORD row = 0; row < m_pIfTable->dwNumEntries; ++row)
+        {
+            if (interface_index != 0 && m_pIfTable->table[row].dwIndex == interface_index)
+                return m_pIfTable->table[row];
+        }
     }
 
     return MIB_IFROW();
@@ -1049,28 +1050,18 @@ void CPulseBarDlg::UpdateNotifyIconTip(bool force)
 
 
 
-void CPulseBarDlg::SaveHistoryTraffic()
-
+bool CPulseBarDlg::SaveHistoryTraffic()
 {
-
     CSingleLock history_lock(&m_history_lock, TRUE);
-    // 使用增量保存，只更新第一行和今天的记录，减少I/O操作
-
-    m_history_traffic.SaveTodayOnly();
-
+    return m_history_traffic.SaveTodayOnly();
 }
 
 
 
-void CPulseBarDlg::SaveHistoryTrafficFull()
-
+bool CPulseBarDlg::SaveHistoryTrafficFull()
 {
-
     CSingleLock history_lock(&m_history_lock, TRUE);
-    // 完整保存，用于程序退出时确保所有数据都保存
-
-    m_history_traffic.Save();
-
+    return m_history_traffic.Save();
 }
 
 
@@ -1079,56 +1070,36 @@ void CPulseBarDlg::LoadHistoryTraffic()
 
 {
 
-    m_history_traffic.Load();
-
+    const bool main_loaded = m_history_traffic.Load();
     CHistoryTrafficFile backup_file(theApp.m_history_traffic_path + L".bak");
 
-    backup_file.LoadSize();     //读取备份文件中流量记录的数量
-
-
-
-    // 如果备份文件中流量记录的数量大于当前的数量，尝试从备份文件中恢复
-
-    if (backup_file.Size() > m_history_traffic.Size())
-
+    // 按日期合并有效备份，条数相同也可能缺少不同日期。
+    const size_t size_before = m_history_traffic.Size();
+    bool backup_missing{};
+    const bool backup_loaded = backup_file.Load(&backup_missing) && !backup_missing;
+    if (backup_loaded)
     {
-
-        size_t size_before = m_history_traffic.Size();
-
-        backup_file.Load();     //加载备份文件（会清理"未来"的记录）
-
-        size_t backup_size_after_load = backup_file.Size();  //加载后实际的记录数（可能因为清理"未来"记录而减少）
-
-
-
-        // 加载后，如果备份文件的记录数仍然大于当前文件，才进行恢复
-
-        if (backup_size_after_load > m_history_traffic.Size())
-
-        {
-
+        if (main_loaded)
             m_history_traffic.Merge(backup_file, true);
-
-            size_t size_after = m_history_traffic.Size();
-
-            size_t recovered_count = size_after - size_before;  //实际恢复的记录数
-
-
-
-            // 只有当实际恢复了记录时才记录日志
-
-            if (recovered_count > 0)
-
-            {
-
-                CString log_info = CCommon::LoadTextFormat(IDS_HISTORY_TRAFFIC_LOST_ERROR_LOG, { size_before, recovered_count });
-
-                CCommon::WriteLog(log_info, theApp.m_log_path.c_str());
-
-            }
-
+        else
+        {
+            // 只有有效备份才能解除加载失败的写保护。
+            m_history_traffic = backup_file;
+            m_history_traffic.SetFilePath(theApp.m_history_traffic_path);
         }
-
+    }
+    if (!backup_missing && !backup_loaded)
+    {
+        m_history_traffic.PreserveBackup();
+        CCommon::WriteLog(L"History backup could not be loaded; backup replacement is disabled to preserve the original file.", theApp.m_log_path.c_str());
+    }
+    if (!main_loaded && !backup_loaded)
+        CCommon::WriteLog(L"History could not be loaded; automatic saving is disabled to preserve the original file.", theApp.m_log_path.c_str());
+    const size_t size_after = m_history_traffic.Size();
+    if (size_after > size_before)
+    {
+        CString log_info = CCommon::LoadTextFormat(IDS_HISTORY_TRAFFIC_LOST_ERROR_LOG, { size_before, size_after - size_before });
+        CCommon::WriteLog(log_info, theApp.m_log_path.c_str());
     }
 
 
@@ -1141,37 +1112,10 @@ void CPulseBarDlg::LoadHistoryTraffic()
 
 
 
-void CPulseBarDlg::BackupHistoryTrafficFile()
-
+bool CPulseBarDlg::BackupHistoryTrafficFile()
 {
-
     CSingleLock history_lock(&m_history_lock, TRUE);
-    // 确保文件已保存到磁盘
-
-    wstring latest_file_path = theApp.m_history_traffic_path;
-
-    wstring backup_file_path = latest_file_path + L".bak";
-
-
-
-    // 检查当前文件是否存在
-
-    if (!CCommon::FileExist(latest_file_path.c_str()))
-
-    {
-
-        return; // 当前文件不存在，无需备份
-
-    }
-
-
-
-    // 直接备份当前文件（当前文件是最新的，包含最新的数据）
-
-    // 备份文件可能包含"未来"的记录，但恢复时会自动清理，所以总是备份当前文件即可
-
-    CopyFile(latest_file_path.c_str(), backup_file_path.c_str(), FALSE);
-
+    return m_history_traffic.SaveBackup();
 }
 
 
@@ -1246,6 +1190,7 @@ void CPulseBarDlg::ApplySettings(COptionsDlg& optionsDlg)
     theApp.m_taskbar_data = optionsDlg.m_tab2_dlg.m_data;
 
     theApp.m_general_data = optionsDlg.m_tab3_dlg.m_data;
+    theApp.PublishMonitorSettings(); //Publish before plugins, timers or hardware can observe this commit.
     theApp.m_cfg_data.m_notify_icon_selected = theApp.NormalizeNotifyIconSelection(optionsDlg.m_notify_icon_selected);
     if (is_notify_icon_style_changed || is_notify_icon_mode_changed)
         UpdateNotifyIconTip(true);
@@ -1394,14 +1339,14 @@ void CPulseBarDlg::ApplySettings(COptionsDlg& optionsDlg)
             //锁外读 shared_ptr 会与那次赋值竞争（形式上就是数据竞争）。
             //但也不能无条件抢锁：冷启动时初始化线程正跨 .NET CreateInstance() 持锁数秒，
             //用户在此时点“确定”会白等一整段 .NET 加载。所以先用原子状态分流：
-            //仍在初始化 → 交给那个线程（它会按最新的 m_general_data 设置启用项），
+            //仍在初始化 → 交给那个线程（它会按最新的已发布采样快照设置启用项），
             //已就绪 → 才进锁取指针；NONE → 直接起初始化线程。
             if (theApp.IsHardwareMonitorInitializing())
 
             {
 
                 //初始化线程收尾时会调用 UpdateOpenHardwareMonitorEnableState()，
-                //它读的是已提交的 m_general_data，因此这里不需要再做任何事。
+                //它在取得硬件锁后读取最新发布快照，因此这里不需要再做任何事。
 
             }
 
@@ -1490,8 +1435,13 @@ bool CPulseBarDlg::IsTaskbarWndValid() const
 
 bool CPulseBarDlg::IsTemperatureNeeded() const
 {
-    return theApp.m_general_data.IsHardwareEnable(HI_CPU) || theApp.m_general_data.IsHardwareEnable(HI_GPU)
-        || theApp.m_general_data.IsHardwareEnable(HI_HDD) || theApp.m_general_data.IsHardwareEnable(HI_MBD);
+    return IsTemperatureNeeded(*theApp.GetMonitorSettingsSnapshot());
+}
+
+bool CPulseBarDlg::IsTemperatureNeeded(const MonitorSettings& settings)
+{
+    return settings.IsHardwareEnable(HI_CPU) || settings.IsHardwareEnable(HI_GPU)
+        || settings.IsHardwareEnable(HI_HDD) || settings.IsHardwareEnable(HI_MBD);
 }
 
 
@@ -1638,11 +1588,11 @@ BOOL CPulseBarDlg::OnInitDialog()
 
 //计算指定秒数的时间内Monitor定时器会触发的次数
 
-static int GetMonitorTimerCount(int second)
+static int GetMonitorTimerCount(int second, const MonitorSettings& settings)
 
 {
 
-    int count = second * 1000 / theApp.m_general_data.monitor_time_span;
+    int count = second * 1000 / settings.monitor_time_span;
 
     if (count <= 0) count = 1;
 
@@ -1657,9 +1607,18 @@ static int GetMonitorTimerCount(int second)
 void CPulseBarDlg::DoMonitorAcquisition()
 
 {
+    //Pin one version before taking any other lock or calling external code.
+    const auto settings = theApp.GetMonitorSettingsSnapshot();
+    //Fallback names are round-local; saving settings preserves the UI's explicit choice.
+    std::wstring hard_disk_name = settings->hard_disk_name;
 
     CSingleLock connection_lock(&m_connection_lock, TRUE);
     //获取网络连接速度；表和连接列表必须作为同一快照访问。
+
+    unsigned __int64 cur_in_speed{}, cur_out_speed{};
+    std::map<unsigned long long, NetworkCounterSample> current_samples;
+    if (m_connection_change_flag)
+        m_network_baselines.clear();
 
     bool interface_table_valid = false;
     bool table_resized = false;
@@ -1677,55 +1636,43 @@ void CPulseBarDlg::DoMonitorAcquisition()
 
         if (interface_table_valid)
         {
-            if (!theApp.m_cfg_data.m_select_all)
+            const auto acquire = [&](int connection_index)
             {
-                const auto table = GetConnectIfTable(m_connection_selected);
-                m_in_bytes = table.dwInOctets;
-                m_out_bytes = table.dwOutOctets;
-            }
-            else
-            {
-                for (size_t i = 0; i < m_connections.size(); ++i)
+                if (connection_index < 0 || connection_index >= static_cast<int>(m_connections.size()))
+                    return;
+                auto& connection = m_connections[connection_index];
+                NetworkCounterSample sample;
+                if (!CAdapterCommon::GetInterfaceCounters(connection.interface_index, connection.interface_luid, sample))
                 {
-                    const auto table = GetConnectIfTable(static_cast<int>(i));
-                    m_in_bytes += table.dwInOctets;
-                    m_out_bytes += table.dwOutOctets;
+                    RequestConnectionRefresh();
+                    return; //No sample: its old baseline is dropped below.
                 }
-            }
+                if (connection.interface_luid == 0)
+                    connection.interface_luid = sample.interface_luid;
+                if (!current_samples.emplace(sample.interface_luid, sample).second)
+                    return; //Filtered aliases must not count the same interface twice.
+                m_in_bytes += sample.in_bytes;
+                m_out_bytes += sample.out_bytes;
+                const auto previous = m_network_baselines.find(sample.interface_luid);
+                if (previous != m_network_baselines.end())
+                {
+                    //Reset each direction independently before summing interfaces.
+                    if (sample.in_bytes >= previous->second.in_bytes)
+                        cur_in_speed += sample.in_bytes - previous->second.in_bytes;
+                    if (sample.out_bytes >= previous->second.out_bytes)
+                        cur_out_speed += sample.out_bytes - previous->second.out_bytes;
+                }
+            };
+            if (!theApp.m_cfg_data.m_select_all)
+                acquire(m_connection_selected);
+            else
+                for (size_t i = 0; i < m_connections.size(); ++i)
+                    acquire(static_cast<int>(i));
         }
     }
-
-
-
-
-
-    unsigned __int64 cur_in_speed{}, cur_out_speed{};       //本次监控时间间隔内的上传和下载速度
-
-
-
-    //如果发送和接收的字节数为0或上次发送和接收的字节数为0或当前连接已改变时，网速无效
-
-    if ((m_in_bytes == 0 && m_out_bytes == 0) || (m_last_in_bytes == 0 && m_last_out_bytes == 0) || m_connection_change_flag
-
-        || m_last_in_bytes > m_in_bytes || m_last_out_bytes > m_out_bytes)
-
-    {
-
-        cur_in_speed = 0;
-
-        cur_out_speed = 0;
-
-    }
-
-    else
-
-    {
-
-        cur_in_speed = m_in_bytes - m_last_in_bytes;
-
-        cur_out_speed = m_out_bytes - m_last_out_bytes;
-
-    }
+    //Only consecutive valid observations share a baseline. Disappearing/failed
+    //interfaces start afresh on recovery; successful peers retain their deltas.
+    m_network_baselines.swap(current_samples);
 
     ////如果大于1GB/s，说明可能产生了异常，网速无效
 
@@ -1745,7 +1692,7 @@ void CPulseBarDlg::DoMonitorAcquisition()
 
     ULONGLONG net_speed_time = ::GetTickCount64();
 
-    int time_span = theApp.m_general_data.monitor_time_span;
+    int time_span = settings->monitor_time_span;
 
     if (last_net_speed_time != 0)
 
@@ -1767,12 +1714,6 @@ void CPulseBarDlg::DoMonitorAcquisition()
 
 
 
-    m_last_in_bytes = m_in_bytes;
-
-    m_last_out_bytes = m_out_bytes;
-
-
-
     //处于自动选择状态时，如果连续30秒没有网速，则可能自动选择的网络不对，此时执行一次自动选择
 
     if (theApp.m_cfg_data.m_auto_select)
@@ -1787,7 +1728,7 @@ void CPulseBarDlg::DoMonitorAcquisition()
 
             m_zero_speed_cnt = 0;
 
-        if (m_zero_speed_cnt >= GetMonitorTimerCount(30))
+        if (m_zero_speed_cnt >= GetMonitorTimerCount(30, *settings))
 
         {
 
@@ -1834,13 +1775,12 @@ void CPulseBarDlg::DoMonitorAcquisition()
 
     theApp.m_today_down_traffic += cur_in_speed;
 
-    m_history_traffic.GetTodayTraffic().up_kBytes = theApp.m_today_up_traffic / 1024u;
-
-    m_history_traffic.GetTodayTraffic().down_kBytes = theApp.m_today_down_traffic / 1024u;
+    m_history_traffic.SetTodayTrafficKBytes(theApp.m_today_up_traffic / 1024u,
+        theApp.m_today_down_traffic / 1024u);
 
     //每隔30秒保存一次流量历史记录
 
-    if (m_monitor_time_cnt % GetMonitorTimerCount(30) == GetMonitorTimerCount(30) - 1)
+    if (m_monitor_time_cnt % GetMonitorTimerCount(30, *settings) == GetMonitorTimerCount(30, *settings) - 1)
 
     {
 
@@ -1890,9 +1830,8 @@ void CPulseBarDlg::DoMonitorAcquisition()
 
             {
 
-                SaveHistoryTraffic();
-
-                last_today_kbytes = current_kbytes;
+                if (SaveHistoryTraffic())
+                    last_today_kbytes = current_kbytes;
 
             }
 
@@ -1907,7 +1846,7 @@ void CPulseBarDlg::DoMonitorAcquisition()
 
     history_lock.Unlock();
 
-    if (m_monitor_time_cnt % GetMonitorTimerCount(3) == GetMonitorTimerCount(3) - 1)
+    if (m_monitor_time_cnt % GetMonitorTimerCount(3, *settings) == GetMonitorTimerCount(3, *settings) - 1)
 
     {
         CSingleLock connection_state_lock(&m_connection_lock, TRUE);
@@ -2017,13 +1956,13 @@ void CPulseBarDlg::DoMonitorAcquisition()
 
     //获取CPU使用率
 
-    theApp.m_cpu_usage = m_cpu_usage_helper.GetCpuUsage(theApp.m_general_data.cpu_usage_acquire_method == GeneralSettingData::CA_CPU_TIME);
+    theApp.m_cpu_usage = m_cpu_usage_helper.GetCpuUsage(settings->cpu_usage_acquire_method == GeneralSettingData::CA_CPU_TIME);
 
 
 
     //获取CPU频率
 
-    //if (lite_version || is_arm64ec || !theApp.m_general_data.IsHardwareEnable(HI_CPU))
+    //if (lite_version || is_arm64ec || !settings->IsHardwareEnable(HI_CPU))
 
     //{
 
@@ -2043,7 +1982,7 @@ void CPulseBarDlg::DoMonitorAcquisition()
 
     bool nvml_ok = m_gpu_mem_helper.GetNvidiaGpuStatus(nvml_util_cache, nvml_temp_cache, nvml_power_cache);
 
-    if (lite_version /*|| is_arm64ec*/ || !theApp.m_general_data.IsHardwareEnable(HI_GPU))
+    if (lite_version /*|| is_arm64ec*/ || !settings->IsHardwareEnable(HI_GPU))
 
     {
 
@@ -2093,11 +2032,11 @@ void CPulseBarDlg::DoMonitorAcquisition()
 
     //获取硬盘利用率
 
-    if (lite_version /*|| is_arm64ec*/ || !theApp.m_general_data.IsHardwareEnable(HI_HDD))
+    if (lite_version /*|| is_arm64ec*/ || !settings->IsHardwareEnable(HI_HDD))
 
     {
 
-        int disk_index = m_disk_usage_helper.FindDiskIndex(theApp.m_general_data.hard_disk_name);
+        int disk_index = m_disk_usage_helper.FindDiskIndex(hard_disk_name);
 
         //没有找到要监控的硬盘时默认使用总体利用率
 
@@ -2111,7 +2050,7 @@ void CPulseBarDlg::DoMonitorAcquisition()
 
             {
 
-                theApp.m_general_data.hard_disk_name = L"_Total";
+                hard_disk_name = L"_Total";
 
             }
 
@@ -2129,7 +2068,7 @@ void CPulseBarDlg::DoMonitorAcquisition()
 
                     disk_index = 0;
 
-                    theApp.m_general_data.hard_disk_name = disk_names.front();
+                    hard_disk_name = disk_names.front();
 
                 }
 
@@ -2145,33 +2084,31 @@ void CPulseBarDlg::DoMonitorAcquisition()
 
             theApp.m_hdd_usage = -1;
 
-        //S2: 磁盘读写速度(IOCTL_DISK_PERFORMANCE 差分,不依赖 PDH)。首次调用仅建基线
+    }
 
-        unsigned long long disk_read_bps = 0, disk_write_bps = 0;
+    //S2: 磁盘读写速度(IOCTL_DISK_PERFORMANCE 差分,不依赖 PDH)。首次调用仅建基线
 
-        if (m_disk_speed_helper.GetDiskSpeed(disk_read_bps, disk_write_bps))
+    unsigned long long disk_read_bps = 0, disk_write_bps = 0;
 
-        {
+    if (m_disk_speed_helper.GetDiskSpeed(disk_read_bps, disk_write_bps))
 
-            theApp.m_disk_speed_available = true;
+    {
 
-            theApp.m_disk_read_speed = disk_read_bps;
+        theApp.m_disk_speed_available = true;
 
-            theApp.m_disk_write_speed = disk_write_bps;
+        theApp.m_disk_read_speed = disk_read_bps;
 
-        }
-
-        else
-
-        {
-
-            theApp.m_disk_speed_available = false;
-
-        }
+        theApp.m_disk_write_speed = disk_write_bps;
 
     }
 
+    else
 
+    {
+
+        theApp.m_disk_speed_available = false;
+
+    }
 
     //获取内存利用率
 
@@ -2194,7 +2131,7 @@ void CPulseBarDlg::DoMonitorAcquisition()
 
     //获取温度
 
-    if (IsTemperatureNeeded() && theApp.IsHardwareMonitorReady())
+    if (IsTemperatureNeeded(*settings) && theApp.IsHardwareMonitorReady())
 
     {
 
@@ -2266,7 +2203,7 @@ void CPulseBarDlg::DoMonitorAcquisition()
 
             {
 
-                if (theApp.m_general_data.cpu_core_name == CCommon::LoadText(IDS_AVREAGE_TEMPERATURE).GetString())  //如果选择了平均温度
+                if (settings->cpu_core_name == CCommon::LoadText(IDS_AVREAGE_TEMPERATURE).GetString())  //如果选择了平均温度
 
                 {
 
@@ -2278,7 +2215,7 @@ void CPulseBarDlg::DoMonitorAcquisition()
 
                 {
 
-                    auto iter = theApp.m_pMonitor->AllCpuTemperature().find(theApp.m_general_data.cpu_core_name);
+                    auto iter = theApp.m_pMonitor->AllCpuTemperature().find(settings->cpu_core_name);
 
                     if (iter == theApp.m_pMonitor->AllCpuTemperature().end())
 
@@ -2286,7 +2223,7 @@ void CPulseBarDlg::DoMonitorAcquisition()
 
                         iter = theApp.m_pMonitor->AllCpuTemperature().begin();
 
-                        theApp.m_general_data.cpu_core_name = iter->first;
+                        //Use this fallback value only; keep the user's selected core unchanged.
 
                     }
 
@@ -2310,7 +2247,7 @@ void CPulseBarDlg::DoMonitorAcquisition()
 
             {
 
-                auto iter = theApp.m_pMonitor->AllHDDTemperature().find(theApp.m_general_data.hard_disk_name);
+                auto iter = theApp.m_pMonitor->AllHDDTemperature().find(hard_disk_name);
 
                 if (iter == theApp.m_pMonitor->AllHDDTemperature().end())
 
@@ -2318,7 +2255,7 @@ void CPulseBarDlg::DoMonitorAcquisition()
 
                     iter = theApp.m_pMonitor->AllHDDTemperature().begin();
 
-                    theApp.m_general_data.hard_disk_name = iter->first;
+                    hard_disk_name = iter->first;
 
                 }
 
@@ -2344,7 +2281,7 @@ void CPulseBarDlg::DoMonitorAcquisition()
 
                 {
 
-                    auto iter = theApp.m_pMonitor->AllHDDUsage().find(theApp.m_general_data.hard_disk_name);
+                    auto iter = theApp.m_pMonitor->AllHDDUsage().find(hard_disk_name);
 
                     if (iter == theApp.m_pMonitor->AllHDDUsage().end())
 
@@ -2352,7 +2289,7 @@ void CPulseBarDlg::DoMonitorAcquisition()
 
                         iter = theApp.m_pMonitor->AllHDDUsage().begin();
 
-                        theApp.m_general_data.hard_disk_name = iter->first;
+                        hard_disk_name = iter->first;
 
                     }
 
@@ -2978,9 +2915,8 @@ void CPulseBarDlg::OnClose()
 
     theApp.SaveGlobalConfig();
 
-    SaveHistoryTrafficFull();  // 退出时使用完整保存，确保所有数据都保存
-
-    BackupHistoryTrafficFile();
+    if (!SaveHistoryTrafficFull() || !BackupHistoryTrafficFile())
+        CCommon::WriteLog(L"History save/backup failed; previous committed data was preserved.", theApp.m_log_path.c_str());
 
 
 
@@ -3631,13 +3567,8 @@ void CPulseBarDlg::OnOptions2()
 
 {
 
-    CWnd* pParent = this;
-
-    if (IsTaskbarWndValid())
-
-        pParent = m_tBarDlg;
-
-    _OnOptions(0, pParent);
+    //设置窗口归属稳定宿主，应用设置时重建任务栏不会连带关闭它。
+    _OnOptions(0, this);
 
 }
 
@@ -3738,10 +3669,10 @@ BOOL CPulseBarDlg::OnQueryEndSession()
     theApp.SaveGlobalConfig();
 
     CSingleLock history_lock(&m_history_lock, TRUE);
-    SaveHistoryTrafficFull();  // 系统关机时使用完整保存，确保所有数据都保存
-
-    BackupHistoryTrafficFile();
+    const bool history_saved = SaveHistoryTrafficFull() && BackupHistoryTrafficFile();
     history_lock.Unlock();
+    if (!history_saved)
+        CCommon::WriteLog(L"History save/backup failed; previous committed data was preserved.", theApp.m_log_path.c_str());
 
 
 
@@ -3890,6 +3821,8 @@ void CPulseBarDlg::OnDisplaySettings()
         theApp.m_taskbar_data.plugin_display_item = dlg.GetPluginDisplayItem();
         theApp.m_taskbar_data.disp_str = dlg.GetDisplayTexts();
         theApp.m_taskbar_data.text_colors = dlg.GetColors();
+        if (dlg.ColorsModified())
+            theApp.m_taskbar_data.specify_each_item_color = true;
         if (IsTaskbarWndValid())
         {
             m_tBarDlg->ApplySettings();
@@ -3930,6 +3863,34 @@ afx_msg LRESULT CPulseBarDlg::OnTabletQuerysystemgesturestatus(WPARAM wParam, LP
 
 
 
+
+
+//托盘“插件”子菜单：命令ID减去区间起点即插件索引，直接打开该插件的选项设置。
+//按索引路由，不读任务栏窗口的点击残留状态，托盘入口与任务栏右键互不影响。
+//托盘“插件”子菜单：命令ID减去区间起点后除以2即插件索引，偶数号打开选项设置、
+//奇数号打开插件详细信息。按索引路由，不读任务栏窗口的点击残留状态，托盘入口
+//与任务栏右键互不影响。
+void CPulseBarDlg::OnPluginTrayCommand(UINT nID)
+{
+    int index = (static_cast<int>(nID) - ID_PLUGIN_TRAY_START) / 2;
+    const std::vector<CPluginManager::PluginInfo>& plugins = theApp.m_plugins.GetPlugins();
+    if (index < 0 || index >= static_cast<int>(plugins.size()))
+        return;
+    const CPluginManager::PluginInfo& plugin_info = plugins[index];
+    if (plugin_info.plugin == nullptr || plugin_info.state != CPluginManager::PluginState::PS_SUCCEED)
+        return;
+    if (nID % 2 == 1)       //奇数号ID：插件详细信息
+    {
+        CPluginInfoDlg dlg(index);
+        dlg.DoModal();
+        return;
+    }
+    auto rtn = plugin_info.plugin->ShowOptionsDialog(GetSafeHwnd());
+    if (rtn == ITMPlugin::OR_OPTION_CHANGED && IsTaskbarWndValid())      //选项有更改，刷新任务栏宽度
+        m_tBarDlg->WidthChanged();
+    if (rtn == ITMPlugin::OR_OPTION_NOT_PROVIDED)
+        MessageBox(CCommon::LoadText(IDS_PLUGIN_NO_OPTIONS_INFO), nullptr, MB_ICONINFORMATION | MB_OK);
+}
 
 
 void CPulseBarDlg::OnPluginOptionsTaksbar()

@@ -18,8 +18,10 @@ PulseBar is a Windows taskbar network-speed and resource monitor. It shows curre
 
 ## Build
 
-* Open `PulseBar.sln` with Visual Studio 2022, or run `build-sln.bat`
-* Output: `Bin/x64/Release/PulseBar.exe`
+* Open `PulseBar.sln` with Visual Studio 2022, or run `build-sln.bat` with VS 2022 Build Tools and Python 3.10+ installed (`build-debug.bat` for Debug).
+* Release output is `Bin/x64/Release/PulseBar.exe`. After a successful compile, the wrapper runs `tools/stage-languages.py` to copy all 18 INIs byte-for-byte from the authoritative `PulseBar/language` into `language` beside the output. Debug also stages checkout-root `language`, matching the wrapper's working directory. Missing languages, invalid encoding or unsafe targets fail the build entry point.
+* After building directly in Visual Studio / MSBuild, run `python -X utf8 -I -B tools/stage-languages.py --build-output "Bin/x64/Release"` to stage languages; use the corresponding `Bin` directory for other platforms/configurations. This step only prepares build languages: it does not read EXEs/DLLs or synchronize portable/installer copies.
+* `tools/sync-distribution.py` remains an explicit local distribution tool for the original maintenance workspace, not a public build dependency. It checks by default; writes require a separate explicit `--write`. Its workspace/path, backup and isolation restrictions are unchanged. Ordinary clones do not need it.
 * Requires the Microsoft Visual C++ runtime: [latest supported VC++ redistributable](https://docs.microsoft.com/en-US/cpp/windows/latest-supported-vc-redist?view=msvc-170)
 
 ## Links

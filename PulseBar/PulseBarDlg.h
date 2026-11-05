@@ -62,8 +62,8 @@ protected:
     int m_connection_selected{ 0 }; //要显示流量的连接的序号
     unsigned __int64 m_in_bytes{};        //当前已接收的字节数
     unsigned __int64 m_out_bytes{};   //当前已发送的字节数
-    unsigned __int64 m_last_in_bytes{}; //上次已接收的字节数
-    unsigned __int64 m_last_out_bytes{};    //上次已发送的字节数
+    //Baselines are per stable interface identity, never sums of unrelated counters.
+    std::map<unsigned long long, NetworkCounterSample> m_network_baselines;
 
     CCPUUsage m_cpu_usage_helper;
     CPdhCpuFreq m_cpu_freq_helper;
@@ -140,10 +140,10 @@ protected:
     void UpdateNotifyIconTip(bool force = false);     //更新通知区图标及鼠标提示
     CTraySpeedIcon m_tray_speed_icon;   //通知区网速图标(B3:图标显示实时网速)
 
-    void SaveHistoryTraffic();        // 增量保存，只更新第一行和今天的记录
-    void SaveHistoryTrafficFull();    // 完整保存，用于程序退出时确保所有数据都保存
+    bool SaveHistoryTraffic();        // 定期保存完整历史快照
+    bool SaveHistoryTrafficFull();    // 完整保存，用于程序退出时确保所有数据都保存
     void LoadHistoryTraffic();
-    void BackupHistoryTrafficFile();
+    bool BackupHistoryTrafficFile();
 
     void _OnOptions(int tab, CWnd* pParent);   //打开“选项”对话框的处理，tab：打开时切换的标签
 
@@ -156,6 +156,7 @@ protected:
 public:
     //void ApplySettings();
     bool IsTemperatureNeeded() const;       //判断是否需要显示温度信息
+    static bool IsTemperatureNeeded(const MonitorSettings& settings); //采样沿用本轮快照
 
 protected:
     // 生成的消息映射函数
@@ -218,6 +219,7 @@ protected:
 public:
     afx_msg void OnPluginOptionsTaksbar();
     afx_msg void OnPluginDetailTaksbar();
+    afx_msg void OnPluginTrayCommand(UINT nID);
     afx_msg UINT OnPowerBroadcast(UINT nPowerEvent, LPARAM nEventData);
     afx_msg void OnColorizationColorChanged(DWORD dwColorizationColor, BOOL bOpacity);
 };

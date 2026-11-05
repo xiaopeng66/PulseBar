@@ -844,6 +844,8 @@ void CTaskBarDlg::ApplySettings()
     //主题/背景图模式变化后重新评估渲染方式(主题面板强制GDI),菜单切换主题无需重启即生效
     DisableRenderFeatureIfNecessary(m_supported_render_enums);
     CalculateWindowSize();
+    if (!theApp.m_taskbar_data.show_speed_graph_tip)
+        HideSpeedGraphTip();
     //开启悬停面板后立即收掉可能残留的原生tooltip，避免两者同时显示
     if (theApp.m_taskbar_data.show_speed_graph_tip && IsWindow(m_tool_tips.GetSafeHwnd()))
         m_tool_tips.Pop();
@@ -917,6 +919,7 @@ void CTaskBarDlg::CalculateWindowSize()
         theApp.m_taskbar_data.display_item.Add(TDI_UP);        //至少显示一项
 
     m_item_widths.clear();
+    m_item_rects.clear();
     //显示项目的宽度
     std::map<CommonDisplayItem, ItemWidth> item_widths;
 

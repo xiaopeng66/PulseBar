@@ -12,6 +12,7 @@
 #include "auto_start_helper.h"
 #include "AppAlreadyRuningDlg.h"
 #include "WindowsSettingHelper.h"
+#include "FilePathHelper.h"
 #include "SettingsHelper.h"
 #ifndef DISABLE_WINDOWS_WEB_EXPERIENCE_DETECTOR
 #include "winrt/base.h"
@@ -367,6 +368,13 @@ void CPulseBarApp::LoadConfig()
 void CPulseBarApp::SaveConfig()
 {
     CSettingsHelper ini;
+    bool sections_valid{};
+    const auto skin_sections = ini.GetAllAppName(L"skin_", &sections_valid);
+    if (!sections_valid)
+    {
+        CCommon::WriteLog(L"Malformed INI section; configuration was not overwritten.", m_log_path.c_str());
+        return;
+    }
 
     //移除旧主窗口键，保留任务栏及第三方配置段。
     for (const wchar_t* key : { L"transparency", L"always_on_top", L"lock_window_pos", L"show_cpu_memory",
@@ -378,7 +386,7 @@ void CPulseBarApp::SaveConfig()
         ini.RemoveKey(L"config", key);
     ini.RemoveSection(L"skins");
     ini.RemoveSection(L"plugin_display_str_main_window");
-    for (const auto& skin_name : ini.GetAllAppName(L"skin_"))
+    for (const auto& skin_name : skin_sections)
         ini.RemoveSection(L"skin_" + skin_name);
 
     //常规设置
@@ -1047,6 +1055,27 @@ void CPulseBarApp::InitMenuResourse()
             (UINT_PTR)m_taskbar_menu_plugin_sub_menu.m_hMenu, _T("<plugin name>"));
     }
 
+    //托盘菜单副本（m_taskbar_menu）原本没有任何插件设置入口：插件的“选项设置”
+    //只挂在任务栏窗口插件项的右键菜单（m_taskbar_menu_plugin）上，托盘这里
+    //只能进“插件管理”。在“插件管理”后加一个“插件”子菜单，每个加载成功的
+    //插件一个命令项，点击直接打开其选项设置。
+    CMenu* taskbar_menu_tray = FindMenuContainingCommand(&m_taskbar_menu, ID_DISPLAY_SETTINGS);
+    if (taskbar_menu_tray != nullptr)
+    {
+        for (int i = 0; i < taskbar_menu_tray->GetMenuItemCount(); ++i)
+        {
+            if (taskbar_menu_tray->GetMenuItemID(i) == ID_PLUGIN_MANAGE)
+            {
+                m_taskbar_menu_tray_plugins.CreatePopupMenu();
+                taskbar_menu_tray->InsertMenu(i + 1, MF_BYPOSITION | MF_POPUP | MF_STRING,
+                    (UINT_PTR)m_taskbar_menu_tray_plugins.m_hMenu, CCommon::LoadText(IDS_PLUGIN_MENU));
+                CMenuIcon::AddIconToMenuItem(taskbar_menu_tray->GetSafeHmenu(), i + 1, TRUE, GetMenuIcon(IDI_PLUGINS));
+                break;
+            }
+        }
+    }
+    UpdateTrayPluginMenu();
+
     //为菜单项添加图标。所有子菜单均按命令 ID 递归定位，避免依赖资源中的固定位置。
     auto addIconForCommand = [&](CMenu* menu, UINT command_id, UINT icon_id)
     {
@@ -1301,6 +1330,7 @@ BOOL CPulseBarApp::InitInstance()
 
     //从ini文件载入设置
     LoadConfig();
+    PublishMonitorSettings(); //No background sampling/hardware initialization before this publication.
 
     m_taskbar_default_style.LoadConfig();
 
@@ -1420,18 +1450,37 @@ void CPulseBarApp::InitOpenHardwareLibInThread()
 }
 
 
+void CPulseBarApp::PublishMonitorSettings()
+{
+    // Only the UI thread reads m_general_data and publishes its committed sampling fields.
+    MonitorSettings settings;
+    settings.monitor_time_span = m_general_data.monitor_time_span;
+    settings.cpu_usage_acquire_method = m_general_data.cpu_usage_acquire_method;
+    settings.hardware_monitor_item = m_general_data.hardware_monitor_item;
+    settings.hard_disk_name = m_general_data.hard_disk_name;
+    settings.cpu_core_name = m_general_data.cpu_core_name;
+    m_monitor_settings.Publish(std::move(settings));
+}
+
+std::shared_ptr<const MonitorSettings> CPulseBarApp::GetMonitorSettingsSnapshot() const
+{
+    return m_monitor_settings.Read();
+}
+
 void CPulseBarApp::UpdateOpenHardwareMonitorEnableState()
 {
 #ifndef WITHOUT_TEMPERATURE
-    //判空必须在锁内：UI 线程关闭硬件监控时会持锁 reset() m_pMonitor，
-    //锁外判空与持锁使用之间留有窗口，会把已释放的指针交回给这里。
+    // Read after acquiring the hardware lock so a waiting initialization/Apply uses
+    // the latest committed version. Read() releases its own lock before any API call;
+    // publication never takes the hardware lock, so this order cannot form a cycle.
     CSingleLock sync(&theApp.m_minitor_lib_critical, TRUE);
+    const auto settings = GetMonitorSettingsSnapshot();
     if (m_pMonitor != nullptr)
     {
-        m_pMonitor->SetCpuEnable(m_general_data.IsHardwareEnable(HI_CPU));
-        m_pMonitor->SetGpuEnable(m_general_data.IsHardwareEnable(HI_GPU));
-        m_pMonitor->SetHddEnable(m_general_data.IsHardwareEnable(HI_HDD));
-        m_pMonitor->SetMainboardEnable(m_general_data.IsHardwareEnable(HI_MBD));
+        m_pMonitor->SetCpuEnable(settings->IsHardwareEnable(HI_CPU));
+        m_pMonitor->SetGpuEnable(settings->IsHardwareEnable(HI_GPU));
+        m_pMonitor->SetHddEnable(settings->IsHardwareEnable(HI_HDD));
+        m_pMonitor->SetMainboardEnable(settings->IsHardwareEnable(HI_MBD));
     }
 #endif
 }
@@ -1588,6 +1637,61 @@ void CPulseBarApp::UpdatePluginMenu(CMenu* pMenu, ITMPlugin* plugin, int plugin_
                     HICON cmd_icon = (HICON)plugin->GetCommandIcon(i);
                     CMenuIcon::AddIconToMenuItem(pMenu->GetSafeHmenu(), ID_PLUGIN_COMMAND_START + i, FALSE, cmd_icon);
                 }
+            }
+        }
+    }
+}
+
+void CPulseBarApp::UpdateTrayPluginMenu()
+{
+    if (m_taskbar_menu_tray_plugins.GetSafeHmenu() == nullptr)
+        return;
+    //插件集合只在启动时确定（禁用插件需重启生效），全量重建即可。
+    //DeleteMenu 对弹出式子项会连带销毁二级菜单句柄，无需单独跟踪生命周期。
+    while (m_taskbar_menu_tray_plugins.DeleteMenu(0, MF_BYPOSITION)) {}
+    const std::vector<CPluginManager::PluginInfo>& plugins = m_plugins.GetPlugins();
+    int added{};
+    for (int index = 0; index < static_cast<int>(plugins.size()); ++index)
+    {
+        if (added > (ID_PLUGIN_TRAY_MAX - ID_PLUGIN_TRAY_START) / 2)
+            break;      //命令ID区间用尽，与插件自带命令一样截断
+        const CPluginManager::PluginInfo& plugin_info = plugins[index];
+        if (plugin_info.plugin == nullptr || plugin_info.state != CPluginManager::PluginState::PS_SUCCEED)
+            continue;
+        //GetInfo 按 ABI 可能返回空指针（TaskBarDlg 弹出前有同样的兜底），改用插件文件名。
+        const wchar_t* plugin_name = plugin_info.plugin->GetInfo(ITMPlugin::TMI_NAME);
+        std::wstring menu_text = (plugin_name != nullptr && plugin_name[0] != L'\0')
+            ? std::wstring(plugin_name) : CFilePathHelper(plugin_info.file_path).GetFileName();
+        //每个插件一个二级子菜单：偶数号ID打开选项设置、奇数号ID打开详细信息。
+        CMenu plugin_menu;
+        plugin_menu.CreatePopupMenu();
+        plugin_menu.AppendMenu(MF_STRING | MF_ENABLED,
+            static_cast<UINT>(ID_PLUGIN_TRAY_START + index * 2), CCommon::LoadText(IDS_PLUGIN_OPTIONS, _T("...")));
+        plugin_menu.AppendMenu(MF_STRING | MF_ENABLED,
+            static_cast<UINT>(ID_PLUGIN_TRAY_START + index * 2 + 1), CCommon::LoadText(IDS_PLUGIN_INFO, _T("...")));
+        if (m_taskbar_menu_tray_plugins.AppendMenu(MF_STRING | MF_POPUP,
+            reinterpret_cast<UINT_PTR>(plugin_menu.Detach()), menu_text.c_str()))
+        {
+            HICON plugin_icon{};
+            if (plugin_info.plugin->GetAPIVersion() >= 5)
+                plugin_icon = static_cast<HICON>(plugin_info.plugin->GetPluginIcon());
+            if (plugin_icon != nullptr)
+                CMenuIcon::AddIconToMenuItem(m_taskbar_menu_tray_plugins.GetSafeHmenu(),
+                    ID_PLUGIN_TRAY_START + index * 2, FALSE, plugin_icon);
+            ++added;
+        }
+    }
+    //没有可用插件时置灰“插件”入口，避免展开为空的子菜单。
+    CMenu* taskbar_menu_tray = FindMenuContainingCommand(&m_taskbar_menu, ID_DISPLAY_SETTINGS);
+    if (taskbar_menu_tray != nullptr)
+    {
+        for (int i = 0; i < taskbar_menu_tray->GetMenuItemCount(); ++i)
+        {
+            CMenu* sub_menu = taskbar_menu_tray->GetSubMenu(i);
+            if (sub_menu != nullptr && sub_menu->GetSafeHmenu() == m_taskbar_menu_tray_plugins.GetSafeHmenu())
+            {
+                taskbar_menu_tray->EnableMenuItem(i, MF_BYPOSITION | (added > 0 ? MF_ENABLED : MF_GRAYED));
+                break;
             }
         }
     }

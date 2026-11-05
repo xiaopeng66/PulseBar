@@ -1,7 +1,7 @@
 **[简体中文](./Help.md) | English**
 
 # PulseBar Frequently Asked Questions
-This is the page about the Frequently Asked Questions of PulseBar. If you want to view the detailed introduction of the functions and usage of PulseBar, please [click here](https://github.com/xiaopeng66/PulseBar/wiki) to open the repository wiki.
+This page covers frequently asked questions about PulseBar. The current version uses the taskbar panel and notification-area icon, without a separate desktop floating window. Some historical wiki pages may still describe older features; follow this page and the current UI. Historical reference: [repository wiki](https://github.com/xiaopeng66/PulseBar/wiki/Home_en).
 
 ### In Windows 11, the taskbar window overlapped with the windows Widgets
 
@@ -29,15 +29,15 @@ Please do not send feedback to me on this issue.
 
 ### How to show the CPU and memory usage?
 
-Right click the main window and check "Show More Info". If you also need to display the CPU and memory usage in the taskbar window, right click the taskbar window and select "Display Settings", check "CPU and Memory Usage" in the  pop-up dialog box.
+Right-click the taskbar panel or the PulseBar notification-area icon, select "Monitor items and order...", enable the CPU usage and memory usage items, then click "OK". The same editor is available under "Settings..." > "Display content" > "Edit monitor items and order...".
 
 ### How do I change the text such as "CPU" and "MEM" in the taskbar
 
-The label text in the taskbar window can be customized. Right click on the taskbar window, select "Options", click "Taskbar Windows Settings", click "Display Text settings" button, the text on the right side of the item can be modified by double click. After modified, click "OK" button twice.
+Taskbar labels can be customized. Right-click the taskbar panel or notification-area icon, select "Monitor items and order...", edit the item's "Display text" column, then click "OK". You can also open this editor from "Settings..." > "Display content" > "Edit monitor items and order...".
 
 
 
-Because the text is customizable, it does not automatically change when you switch the language. After you swatch the language, you can click "Restore default" button in the "Display Text settings" dialog box.
+Switching the language does not overwrite custom labels. To update them, double-click the "Display text" cells in "Monitor items and order...". The "Restore default" button in this editor restores item order only; it does not reset label text.
 
 ### The net speed is always displayed as 0KB
 
@@ -55,9 +55,7 @@ If this problem still exists, please try to click the "Select the connection to 
 
 ### How do I set the color of each item in the taskbar window individually?
 
-Select "Options" In the right-click menu, switch to "Taskbar Window Settings" tab, check "Specify colors for each item", and then click the color block on the right side of "Text Color " to pop up the dialog box for taskbar window color settings. 
-
-If you do not check "Specify colors for each item", you can only set the uniform color for the text.
+Right-click the taskbar panel or notification-area icon, select "Monitor items and order...", double-click the "Label color" and "Value color" cells to choose colors, then click "OK". Changing colors enables per-item colors. The same editor is available from "Settings..." > "Display content".
 
 ### "Auto run when Windows start" dose not work
 Starting from version 1.80, the version with temperature monitoring and the version without temperature monitoring have adopted different methods to realize "auto run when Windows start".
@@ -120,16 +118,10 @@ The method to solve this problem is:
 
 ### The net speed value is not fully displayed.
 Because the width of each character in different fonts is not the same, in some cases, it does appear the problem of the net speed value is not fully displayed. If this problem occurs, open "Options"-"Taskbar Window Settings", and select a larger value in the "Number of digits" drop down list.
-### How to cancel after setting the mouse penetrate?
-Right click the PulseBar icon in the notification area, uncheck the "Mouse Penetrate".
-After the mouse penetrate is set, the suspension window will not be able to respond to any mouse messages, or pop-up right-click menu. But the menu can be popped up by right click the icon in notification area. The right-click menu of the main window and which of the notification area icon is exactly the same.
-In addition, even if you have previously set the hidden notify icon, when the "mouse penetrate" is set, the notify icon will also automatically appear to prevent the right-click menu cannot be displayed. 
-Note: The notification area icon will be automatically displayed in the following situations: 
+### How do I restore a hidden taskbar panel?
+Right-click the PulseBar notification-area icon and select "Show taskbar panel". The icon remains available while the taskbar panel is closed, so you can still open "Settings..." or exit the app. Clicking the icon opens settings or brings an already-open dialog to the foreground.
 
-* After the "Mouse Penetrate" is set;
-* Hide the main window without displaying the taskbar window;
-* Close the taskbar window when the main window is hidden;
-* Close the taskbar window when the "Mouse Penetrate" is set.
+The current version does not provide the old desktop floating window's mouse-penetration switch; there is no such menu item to uncheck.
 ### Problems with the taskbar window color in Windows 10 white taskbar theme
 When using the white taskbar theme, you can click the "Preset" button in the "Taskbar Window Settings" and select "Light Mode" to set the taskbar color in light mode. As the picture shows:
 

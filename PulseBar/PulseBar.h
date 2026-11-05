@@ -24,6 +24,7 @@
 #include "StrTable.h"
 #include "PluginUpdateHelper.h"
 #include "PluginInterface.h"
+#include "MonitorSettings.h"
 
 // CPulseBarApp:
 // 有关此类的实现，请参阅 PulseBar.cpp
@@ -81,7 +82,7 @@ public:
     //选项设置数据
     MainWndSettingData m_main_wnd_data;
     TaskBarSettingData m_taskbar_data;
-    GeneralSettingData m_general_data;
+    GeneralSettingData m_general_data; //UI-owned; workers use GetMonitorSettingsSnapshot().
     //其他设置数据
     MainConfigData m_cfg_data;
     int m_notify_interval;      //弹出通知消息的时间间隔
@@ -106,6 +107,7 @@ public:
     CMenu m_taskbar_menu;       //任务栏窗口右键菜单
     CMenu m_taskbar_menu_plugin;    //右击任务栏窗口插件区域的右键菜单
     CMenu m_taskbar_menu_plugin_sub_menu;
+    CMenu m_taskbar_menu_tray_plugins;      //托盘菜单的“插件”子菜单（每个加载成功的插件一个选项入口）
 
 #ifndef WITHOUT_TEMPERATURE
     //硬件监控实例的构造状态。采样线程在锁外读它做快速跳过判断，
@@ -192,6 +194,9 @@ public:
 
     bool IsCheckingForUpdate() const { return m_checking_update; }      //是否正在检查更新
 
+    //UI-only publisher; read handles are immutable and may outlive later UI commits.
+    void PublishMonitorSettings();
+    std::shared_ptr<const MonitorSettings> GetMonitorSettingsSnapshot() const;
     void InitOpenHardwareLibInThread();     //开启一个后台线程初始化OpenHardwareMonitor
     void UpdateOpenHardwareMonitorEnableState();    //更新硬件监控的启用/禁用状态
 
@@ -206,6 +211,9 @@ public:
     //更新插件子菜单
     //plugin_cmd_start_index: 插件命令在菜单中的起始位置
     static void UpdatePluginMenu(CMenu* pMenu, ITMPlugin* plugin, int plugin_cmd_start_index);
+    //重建托盘“插件”子菜单：为每个加载成功的插件添加一个直接打开其选项设置的命令项。
+    //托盘菜单副本原本没有插件入口，只能进“插件管理”。
+    void UpdateTrayPluginMenu();
 
     void CheckWindows11Taskbar();
     bool IsWindows11Taskbar() const { return m_is_windows11_taskbar; }
@@ -216,6 +224,7 @@ public:
     void SetThemeColor(COLORREF color);
 
 private:
+    MonitorSettingsStore m_monitor_settings;
     //int m_no_multistart_warning_time{};       //用于设置在开机后多长时间内不弹出“已经有一个程序正在运行”的警告提示
     bool m_exit_when_start_by_restart_manager{ true };      //如果程序被Windows重启管理器重新启动，则退出程序
     int m_dpi{ 96 };

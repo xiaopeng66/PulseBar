@@ -6,5 +6,5 @@ call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliar
 cd /d "%~dp0"
 msbuild PulseBar.sln /t:PulseBar /p:Configuration=Release /p:Platform=x64 /m /v:m /nologo
 if errorlevel 1 exit /b %errorlevel%
-python -X utf8 -I -B "%~dp0tools\sync-distribution.py" --build-output "%~dp0Bin\x64\Release" --write
+python -X utf8 -I -B "%~dp0tools\stage-languages.py" --build-output "Bin/x64/Release"
 exit /b %errorlevel%

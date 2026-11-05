@@ -874,19 +874,145 @@ bool CCommon::CopyStringToClipboard(const wstring& str)
 
 wstring CCommon::GetJsonValueSimple(const wstring& json_str, const wstring& name)
 {
-    wstring str_name{ L"\"" };
-    str_name += name;
-    str_name += L'\"';
-    size_t index = json_str.find(str_name);
-    if (index == wstring::npos)
+    if (json_str.size() > 64 * 1024)
         return wstring();
-    index = json_str.find(L':', index + 1);
-    if (index == wstring::npos)
+    size_t pos{};
+    auto skip_space = [&]() {
+        while (pos < json_str.size() && (json_str[pos] == L' ' || json_str[pos] == L'\t'
+            || json_str[pos] == L'\r' || json_str[pos] == L'\n'))
+            ++pos;
+    };
+    auto read_string = [&](wstring& result) {
+        if (pos >= json_str.size() || json_str[pos++] != L'"')
+            return false;
+        while (pos < json_str.size())
+        {
+            wchar_t ch = json_str[pos++];
+            if (ch == L'"')
+                return true;
+            if (ch < L' ')
+                return false;
+            if (ch == L'\\')
+            {
+                if (pos == json_str.size())
+                    return false;
+                switch (json_str[pos++])
+                {
+                case L'"': ch = L'"'; break;
+                case L'\\': ch = L'\\'; break;
+                case L'/': ch = L'/'; break;
+                case L'b': ch = L'\b'; break;
+                case L'f': ch = L'\f'; break;
+                case L'n': ch = L'\n'; break;
+                case L'r': ch = L'\r'; break;
+                case L't': ch = L'\t'; break;
+                case L'u':
+                {
+                    if (json_str.size() - pos < 4)
+                        return false;
+                    unsigned int value{};
+                    for (int i{}; i < 4; ++i)
+                    {
+                        const wchar_t hex = json_str[pos++];
+                        unsigned int digit;
+                        if (hex >= L'0' && hex <= L'9') digit = hex - L'0';
+                        else if (hex >= L'a' && hex <= L'f') digit = hex - L'a' + 10;
+                        else if (hex >= L'A' && hex <= L'F') digit = hex - L'A' + 10;
+                        else return false;
+                        value = value * 16 + digit;
+                    }
+                    ch = static_cast<wchar_t>(value);
+                    break;
+                }
+                default: return false;
+                }
+            }
+            result.push_back(ch);
+        }
+        return false;
+    };
+
+    skip_space();
+    if (pos == json_str.size() || json_str[pos++] != L'{')
         return wstring();
-    index = json_str.find_first_not_of(L"\" ", index + 1);
-    size_t index_end = json_str.find_first_of(L"\",]}\r\n", index);
-    wstring result = json_str.substr(index, index_end - index);
-    return result;
+    wstring found;
+    bool have_value = false;
+    skip_space();
+    if (pos < json_str.size() && json_str[pos] == L'}')
+        return wstring();
+    while (pos < json_str.size())
+    {
+        wstring key;
+        if (!read_string(key))
+            return wstring();
+        skip_space();
+        if (pos == json_str.size() || json_str[pos++] != L':')
+            return wstring();
+        skip_space();
+        wstring value;
+        const bool string_value = pos < json_str.size() && json_str[pos] == L'"';
+        if (string_value)
+        {
+            if (!read_string(value))
+                return wstring();
+        }
+        else
+        {
+            // This flat string-field reader also accepts JSON scalar metadata.
+            const size_t start = pos;
+            while (pos < json_str.size() && json_str[pos] != L',' && json_str[pos] != L'}'
+                && json_str[pos] != L' ' && json_str[pos] != L'\t' && json_str[pos] != L'\r' && json_str[pos] != L'\n')
+                ++pos;
+            const wstring scalar = json_str.substr(start, pos - start);
+            if (scalar != L"null" && scalar != L"true" && scalar != L"false")
+            {
+                size_t number{};
+                if (number < scalar.size() && scalar[number] == L'-') ++number;
+                if (number == scalar.size()) return wstring();
+                if (scalar[number] == L'0') ++number;
+                else
+                {
+                    if (scalar[number] < L'1' || scalar[number] > L'9') return wstring();
+                    while (number < scalar.size() && scalar[number] >= L'0' && scalar[number] <= L'9') ++number;
+                }
+                if (number < scalar.size() && scalar[number] == L'.')
+                {
+                    const size_t first = ++number;
+                    while (number < scalar.size() && scalar[number] >= L'0' && scalar[number] <= L'9') ++number;
+                    if (first == number) return wstring();
+                }
+                if (number < scalar.size() && (scalar[number] == L'e' || scalar[number] == L'E'))
+                {
+                    ++number;
+                    if (number < scalar.size() && (scalar[number] == L'+' || scalar[number] == L'-')) ++number;
+                    const size_t first = number;
+                    while (number < scalar.size() && scalar[number] >= L'0' && scalar[number] <= L'9') ++number;
+                    if (first == number) return wstring();
+                }
+                if (number != scalar.size()) return wstring();
+            }
+        }
+        if (key == name)
+        {
+            if (have_value || !string_value)
+                return wstring();
+            found = std::move(value);
+            have_value = true;
+        }
+        skip_space();
+        if (pos == json_str.size())
+            return wstring();
+        if (json_str[pos] == L'}')
+        {
+            ++pos;
+            skip_space();
+            return pos == json_str.size() ? found : wstring();
+        }
+        if (json_str[pos++] != L',')
+            return wstring();
+        skip_space();
+    }
+    return wstring();
 }
 
 bool CCommon::GetURL(const wstring& url, std::string& result, const wstring& user_agent)

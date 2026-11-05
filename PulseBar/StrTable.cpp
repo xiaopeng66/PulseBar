@@ -153,8 +153,11 @@ const wstring& CStrTable::LoadText(const wstring& key, const wstring& section)
 
 void CStrTable::ReadStringtableFronIni(const CIniHelper& ini)
 {
+    bool valid{};
+    const auto section_list = ini.GetAllAppName(L"", &valid);
+    if (!valid)
+        return; // 保留默认语言，不应用损坏文件中的部分字符串。
     std::set<std::wstring> sections{ L"general", L"text", L"menu" };
-    auto section_list = ini.GetAllAppName(L"");
     for (const auto& section : section_list)
         sections.insert(section);
 

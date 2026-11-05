@@ -313,6 +313,12 @@
     <ClInclude Include="ColorStatic.h">
       <Filter>源文件和头文件\派生的控件类\ColorStatic</Filter>
     </ClInclude>
+    <ClInclude Include="AtomicFile.h">
+      <Filter>源文件和头文件\公共的类</Filter>
+    </ClInclude>
+    <ClInclude Include="MonitorSettings.h">
+      <Filter>源文件和头文件\公共的类</Filter>
+    </ClInclude>
     <ClInclude Include="IniHelper.h">
       <Filter>源文件和头文件\公共的类\IniHelper</Filter>
     </ClInclude>
