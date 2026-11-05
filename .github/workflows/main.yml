@@ -7,52 +7,13 @@ on:
 jobs:
 
   x64_build:
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     steps:
     - uses: actions/checkout@v3
       
     - name: Add msbuild to PATH
       uses: microsoft/setup-msbuild@v2
-    - name: Install v143 MFC libraries
-      shell: pwsh
-      run: |
-        $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
-        $setup = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/setup.exe"
-        $installPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-        if (-not $installPath) { throw 'Visual Studio C++ instance not found' }
-        # v143 toolsets are 14.3x/14.4x; newer 14.5x directories belong to other toolsets.
-        $toolset = Get-ChildItem "$installPath/VC/Tools/MSVC" -Directory |
-          Where-Object { $_.Name -like '14.3*' -or $_.Name -like '14.4*' } |
-          Sort-Object { [version]$_.Name } -Descending |
-          Select-Object -First 1
-        if (-not $toolset) { throw 'No v143 MSVC toolset found on the runner' }
-        Write-Host 'MSVC directories:'
-        Get-ChildItem "$installPath/VC/Tools/MSVC" -Directory | ForEach-Object { Write-Host $_.Name }
-        Write-Host 'Installed MFC packages:'
-        (& $vswhere -latest -products * -format json | ConvertFrom-Json)[0].packages |
-          Where-Object { $_.id -like '*MFC*' } | ForEach-Object { Write-Host $_.id }
-        $components = @("Microsoft.VisualStudio.Component.VC.$($toolset.Name).MFC.x86.x64")
-        Write-Host "Installing MFC for $($toolset.Name): $($components -join ', ')"
-        $modifyArgs = @('modify', '--installPath', $installPath, '--quiet', '--norestart', '--noresume')
-        foreach ($component in $components) { $modifyArgs += @('--add', $component) }
-        & $setup @modifyArgs
-        if ($LASTEXITCODE -ne 0) {
-          Write-Host "VS installer exit code $LASTEXITCODE; arguments: $($modifyArgs -join ' ')"
-          throw "VS installer failed with exit code $LASTEXITCODE"
-        }
-        $atlmfc = "$installPath/VC/Tools/MSVC/$($toolset.Name)/atlmfc"
-        if (-not (Test-Path "$atlmfc/lib") -and -not (Test-Path "$atlmfc/include")) {
-          Write-Host 'atlmfc missing after install; last installer log lines:'
-          Get-ChildItem $env:TEMP -Filter 'dd_installer_*.log' -ErrorAction SilentlyContinue |
-            Sort-Object LastWriteTime -Descending | Select-Object -First 1 |
-            ForEach-Object { Get-Content $_.FullName -Tail 80 }
-          throw "MFC was not written to $atlmfc although the installer succeeded"
-        }
-        Write-Host "MFC present at $atlmfc"
-
-
-      
     - name: Run msbuild
       run: msbuild PulseBar_Lite.sln -p:configuration="Release (lite)" -p:platform=x64 -p:platformToolset=v143
 
@@ -93,52 +54,13 @@ jobs:
         path: Bin/x64/Release (lite)/*.pdb
 
   x86_build:
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     steps:
     - uses: actions/checkout@v3
       
     - name: Add msbuild to PATH
       uses: microsoft/setup-msbuild@v2
-    - name: Install v143 MFC libraries
-      shell: pwsh
-      run: |
-        $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
-        $setup = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/setup.exe"
-        $installPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-        if (-not $installPath) { throw 'Visual Studio C++ instance not found' }
-        # v143 toolsets are 14.3x/14.4x; newer 14.5x directories belong to other toolsets.
-        $toolset = Get-ChildItem "$installPath/VC/Tools/MSVC" -Directory |
-          Where-Object { $_.Name -like '14.3*' -or $_.Name -like '14.4*' } |
-          Sort-Object { [version]$_.Name } -Descending |
-          Select-Object -First 1
-        if (-not $toolset) { throw 'No v143 MSVC toolset found on the runner' }
-        Write-Host 'MSVC directories:'
-        Get-ChildItem "$installPath/VC/Tools/MSVC" -Directory | ForEach-Object { Write-Host $_.Name }
-        Write-Host 'Installed MFC packages:'
-        (& $vswhere -latest -products * -format json | ConvertFrom-Json)[0].packages |
-          Where-Object { $_.id -like '*MFC*' } | ForEach-Object { Write-Host $_.id }
-        $components = @("Microsoft.VisualStudio.Component.VC.$($toolset.Name).MFC.x86.x64")
-        Write-Host "Installing MFC for $($toolset.Name): $($components -join ', ')"
-        $modifyArgs = @('modify', '--installPath', $installPath, '--quiet', '--norestart', '--noresume')
-        foreach ($component in $components) { $modifyArgs += @('--add', $component) }
-        & $setup @modifyArgs
-        if ($LASTEXITCODE -ne 0) {
-          Write-Host "VS installer exit code $LASTEXITCODE; arguments: $($modifyArgs -join ' ')"
-          throw "VS installer failed with exit code $LASTEXITCODE"
-        }
-        $atlmfc = "$installPath/VC/Tools/MSVC/$($toolset.Name)/atlmfc"
-        if (-not (Test-Path "$atlmfc/lib") -and -not (Test-Path "$atlmfc/include")) {
-          Write-Host 'atlmfc missing after install; last installer log lines:'
-          Get-ChildItem $env:TEMP -Filter 'dd_installer_*.log' -ErrorAction SilentlyContinue |
-            Sort-Object LastWriteTime -Descending | Select-Object -First 1 |
-            ForEach-Object { Get-Content $_.FullName -Tail 80 }
-          throw "MFC was not written to $atlmfc although the installer succeeded"
-        }
-        Write-Host "MFC present at $atlmfc"
-
-
-      
     - name: Run msbuild
       run: msbuild PulseBar_Lite.sln -p:configuration="Release (lite)" -p:platform=x86 -p:platformToolset=v143
 
@@ -179,53 +101,13 @@ jobs:
         path: Bin/Release (lite)/*.pdb
 
   arm64ec_build:
-    runs-on: windows-latest
+    runs-on: windows-2022
 
     steps:
     - uses: actions/checkout@v3
       
     - name: Add msbuild to PATH
       uses: microsoft/setup-msbuild@v2
-    - name: Install v143 MFC libraries
-      shell: pwsh
-      run: |
-        $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
-        $setup = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/setup.exe"
-        $installPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-        if (-not $installPath) { throw 'Visual Studio C++ instance not found' }
-        # v143 toolsets are 14.3x/14.4x; newer 14.5x directories belong to other toolsets.
-        $toolset = Get-ChildItem "$installPath/VC/Tools/MSVC" -Directory |
-          Where-Object { $_.Name -like '14.3*' -or $_.Name -like '14.4*' } |
-          Sort-Object { [version]$_.Name } -Descending |
-          Select-Object -First 1
-        if (-not $toolset) { throw 'No v143 MSVC toolset found on the runner' }
-        Write-Host 'MSVC directories:'
-        Get-ChildItem "$installPath/VC/Tools/MSVC" -Directory | ForEach-Object { Write-Host $_.Name }
-        Write-Host 'Installed MFC packages:'
-        (& $vswhere -latest -products * -format json | ConvertFrom-Json)[0].packages |
-          Where-Object { $_.id -like '*MFC*' } | ForEach-Object { Write-Host $_.id }
-        $components = @("Microsoft.VisualStudio.Component.VC.$($toolset.Name).MFC.x86.x64")
-        $components += "Microsoft.VisualStudio.Component.VC.$($toolset.Name).MFC.ARM64EC"
-        Write-Host "Installing MFC for $($toolset.Name): $($components -join ', ')"
-        $modifyArgs = @('modify', '--installPath', $installPath, '--quiet', '--norestart', '--noresume')
-        foreach ($component in $components) { $modifyArgs += @('--add', $component) }
-        & $setup @modifyArgs
-        if ($LASTEXITCODE -ne 0) {
-          Write-Host "VS installer exit code $LASTEXITCODE; arguments: $($modifyArgs -join ' ')"
-          throw "VS installer failed with exit code $LASTEXITCODE"
-        }
-        $atlmfc = "$installPath/VC/Tools/MSVC/$($toolset.Name)/atlmfc"
-        if (-not (Test-Path "$atlmfc/lib") -and -not (Test-Path "$atlmfc/include")) {
-          Write-Host 'atlmfc missing after install; last installer log lines:'
-          Get-ChildItem $env:TEMP -Filter 'dd_installer_*.log' -ErrorAction SilentlyContinue |
-            Sort-Object LastWriteTime -Descending | Select-Object -First 1 |
-            ForEach-Object { Get-Content $_.FullName -Tail 80 }
-          throw "MFC was not written to $atlmfc although the installer succeeded"
-        }
-        Write-Host "MFC present at $atlmfc"
-
-
-      
     - name: Run msbuild
       run: msbuild PulseBar_Lite.sln -p:configuration="Release (lite)" -p:platform=ARM64EC -p:platformToolset=v143
 
