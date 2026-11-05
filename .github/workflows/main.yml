@@ -10,10 +10,10 @@ jobs:
     runs-on: windows-2022
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v7
       
     - name: Add msbuild to PATH
-      uses: microsoft/setup-msbuild@v2
+      uses: microsoft/setup-msbuild@v3
     - name: Run msbuild
       run: msbuild PulseBar_Lite.sln -p:configuration="Release (lite)" -p:platform=x64 -p:platformToolset=v143
 
@@ -31,14 +31,14 @@ jobs:
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       
     - name: Get current time
-      uses: josStorer/get-current-time@v2.0.2
+      uses: josStorer/get-current-time@v2.1.3
       id: current-time
       with:
         format: YYYYMMDD_HHmmss
         utcOffset: "+08:00"
       
     - name : Upload artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: x64_${{ steps.current-time.outputs.formattedTime }}_PulseBar
         if-no-files-found: error
@@ -48,7 +48,7 @@ jobs:
           Bin/x64/Release (lite)/language/*.ini
 
     - name : Upload pdb files
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: x64_${{ steps.current-time.outputs.formattedTime }}_pdb
         path: Bin/x64/Release (lite)/*.pdb
@@ -57,10 +57,10 @@ jobs:
     runs-on: windows-2022
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v7
       
     - name: Add msbuild to PATH
-      uses: microsoft/setup-msbuild@v2
+      uses: microsoft/setup-msbuild@v3
     - name: Run msbuild
       run: msbuild PulseBar_Lite.sln -p:configuration="Release (lite)" -p:platform=x86 -p:platformToolset=v143
 
@@ -78,14 +78,14 @@ jobs:
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       
     - name: Get current time
-      uses: josStorer/get-current-time@v2.0.2
+      uses: josStorer/get-current-time@v2.1.3
       id: current-time
       with:
         format: YYYYMMDD_HHmmss
         utcOffset: "+08:00"
       
     - name : Upload artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: x86_${{ steps.current-time.outputs.formattedTime }}_PulseBar
         if-no-files-found: error
@@ -95,7 +95,7 @@ jobs:
           Bin/Release (lite)/language/*.ini
       
     - name : Upload pdb files
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: x86_${{ steps.current-time.outputs.formattedTime }}_pdb
         path: Bin/Release (lite)/*.pdb
@@ -104,10 +104,10 @@ jobs:
     runs-on: windows-2022
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v7
       
     - name: Add msbuild to PATH
-      uses: microsoft/setup-msbuild@v2
+      uses: microsoft/setup-msbuild@v3
     - name: Run msbuild
       run: msbuild PulseBar_Lite.sln -p:configuration="Release (lite)" -p:platform=ARM64EC -p:platformToolset=v143
 
@@ -125,7 +125,7 @@ jobs:
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       
     - name: Get current time
-      uses: josStorer/get-current-time@v2.0.2
+      uses: josStorer/get-current-time@v2.1.3
       id: current-time
       with:
         format: YYYYMMDD_HHmmss
@@ -135,7 +135,7 @@ jobs:
     #   run: mv Bin/x64/Release/*.dll  Bin/ARM64EC/Release/
 
     - name : Upload artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: arm64EC_${{ steps.current-time.outputs.formattedTime }}_PulseBar
         if-no-files-found: error
@@ -145,7 +145,7 @@ jobs:
           Bin/ARM64EC/Release (lite)/language/*.ini
 
     - name : Upload pdb files
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: arm64EC_${{ steps.current-time.outputs.formattedTime }}_pdb
         path: Bin/ARM64EC/Release (lite)/*.pdb
