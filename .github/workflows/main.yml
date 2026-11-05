@@ -14,6 +14,27 @@ jobs:
       
     - name: Add msbuild to PATH
       uses: microsoft/setup-msbuild@v2
+    - name: Install v143 MFC libraries
+      shell: pwsh
+      run: |
+        $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
+        $setup = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/setup.exe"
+        $installPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+        if (-not $installPath) { throw 'Visual Studio C++ instance not found' }
+        # v143 toolsets are 14.3x/14.4x; newer 14.5x directories belong to other toolsets.
+        $toolset = Get-ChildItem "$installPath/VC/Tools/MSVC" -Directory |
+          Where-Object { $_.Name -like '14.3*' -or $_.Name -like '14.4*' } |
+          Sort-Object { [version]$_.Name } -Descending |
+          Select-Object -First 1
+        if (-not $toolset) { throw 'No v143 MSVC toolset found on the runner' }
+        $components = @("Microsoft.VisualStudio.Component.VC.$($toolset.Name).MFC.x86.x64")
+        Write-Host "Installing MFC for $($toolset.Name): $($components -join ', ')"
+        $arguments = @('modify', '--installPath', $installPath, '--quiet', '--norestart', '--noresume')
+        foreach ($component in $components) { $arguments += @('--add', $component) }
+        $process = Start-Process -FilePath $setup -ArgumentList $arguments -Wait -PassThru
+        if ($process.ExitCode -ne 0) { throw "VS installer failed with exit code $($process.ExitCode)" }
+
+
       
     - name: Run msbuild
       run: msbuild PulseBar_Lite.sln -p:configuration="Release (lite)" -p:platform=x64 -p:platformToolset=v143
@@ -62,6 +83,27 @@ jobs:
       
     - name: Add msbuild to PATH
       uses: microsoft/setup-msbuild@v2
+    - name: Install v143 MFC libraries
+      shell: pwsh
+      run: |
+        $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
+        $setup = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/setup.exe"
+        $installPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+        if (-not $installPath) { throw 'Visual Studio C++ instance not found' }
+        # v143 toolsets are 14.3x/14.4x; newer 14.5x directories belong to other toolsets.
+        $toolset = Get-ChildItem "$installPath/VC/Tools/MSVC" -Directory |
+          Where-Object { $_.Name -like '14.3*' -or $_.Name -like '14.4*' } |
+          Sort-Object { [version]$_.Name } -Descending |
+          Select-Object -First 1
+        if (-not $toolset) { throw 'No v143 MSVC toolset found on the runner' }
+        $components = @("Microsoft.VisualStudio.Component.VC.$($toolset.Name).MFC.x86.x64")
+        Write-Host "Installing MFC for $($toolset.Name): $($components -join ', ')"
+        $arguments = @('modify', '--installPath', $installPath, '--quiet', '--norestart', '--noresume')
+        foreach ($component in $components) { $arguments += @('--add', $component) }
+        $process = Start-Process -FilePath $setup -ArgumentList $arguments -Wait -PassThru
+        if ($process.ExitCode -ne 0) { throw "VS installer failed with exit code $($process.ExitCode)" }
+
+
       
     - name: Run msbuild
       run: msbuild PulseBar_Lite.sln -p:configuration="Release (lite)" -p:platform=x86 -p:platformToolset=v143
@@ -110,6 +152,28 @@ jobs:
       
     - name: Add msbuild to PATH
       uses: microsoft/setup-msbuild@v2
+    - name: Install v143 MFC libraries
+      shell: pwsh
+      run: |
+        $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
+        $setup = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/setup.exe"
+        $installPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+        if (-not $installPath) { throw 'Visual Studio C++ instance not found' }
+        # v143 toolsets are 14.3x/14.4x; newer 14.5x directories belong to other toolsets.
+        $toolset = Get-ChildItem "$installPath/VC/Tools/MSVC" -Directory |
+          Where-Object { $_.Name -like '14.3*' -or $_.Name -like '14.4*' } |
+          Sort-Object { [version]$_.Name } -Descending |
+          Select-Object -First 1
+        if (-not $toolset) { throw 'No v143 MSVC toolset found on the runner' }
+        $components = @("Microsoft.VisualStudio.Component.VC.$($toolset.Name).MFC.x86.x64")
+        $components += 'Microsoft.VisualStudio.Component.VC.$($toolset.Name).MFC.ARM64EC'
+        Write-Host "Installing MFC for $($toolset.Name): $($components -join ', ')"
+        $arguments = @('modify', '--installPath', $installPath, '--quiet', '--norestart', '--noresume')
+        foreach ($component in $components) { $arguments += @('--add', $component) }
+        $process = Start-Process -FilePath $setup -ArgumentList $arguments -Wait -PassThru
+        if ($process.ExitCode -ne 0) { throw "VS installer failed with exit code $($process.ExitCode)" }
+
+
       
     - name: Run msbuild
       run: msbuild PulseBar_Lite.sln -p:configuration="Release (lite)" -p:platform=ARM64EC -p:platformToolset=v143
