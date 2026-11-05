@@ -27,13 +27,20 @@ jobs:
           Sort-Object { [version]$_.Name } -Descending |
           Select-Object -First 1
         if (-not $toolset) { throw 'No v143 MSVC toolset found on the runner' }
+        Write-Host 'MSVC directories:'
+        Get-ChildItem "$installPath/VC/Tools/MSVC" -Directory | ForEach-Object { Write-Host $_.Name }
+        Write-Host 'Installed MFC packages:'
+        (& $vswhere -latest -products * -format json | ConvertFrom-Json)[0].packages |
+          Where-Object { $_.id -like '*MFC*' } | ForEach-Object { Write-Host $_.id }
         $components = @("Microsoft.VisualStudio.Component.VC.$($toolset.Name).MFC.x86.x64")
         Write-Host "Installing MFC for $($toolset.Name): $($components -join ', ')"
-        # Start-Process splits array arguments on spaces; quote the install path explicitly.
-        $argumentString = 'modify --installPath "' + $installPath + '" --quiet --norestart --noresume'
-        foreach ($component in $components) { $argumentString += ' --add ' + $component }
-        $process = Start-Process -FilePath $setup -ArgumentList $argumentString -Wait -PassThru
-        if ($process.ExitCode -ne 0) { throw "VS installer failed with exit code $($process.ExitCode)" }
+        $modifyArgs = @('modify', '--installPath', $installPath, '--quiet', '--norestart', '--noresume')
+        foreach ($component in $components) { $modifyArgs += @('--add', $component) }
+        & $setup @modifyArgs
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "VS installer exit code $LASTEXITCODE; arguments: $($modifyArgs -join ' ')"
+          throw "VS installer failed with exit code $LASTEXITCODE"
+        }
 
 
       
@@ -97,13 +104,20 @@ jobs:
           Sort-Object { [version]$_.Name } -Descending |
           Select-Object -First 1
         if (-not $toolset) { throw 'No v143 MSVC toolset found on the runner' }
+        Write-Host 'MSVC directories:'
+        Get-ChildItem "$installPath/VC/Tools/MSVC" -Directory | ForEach-Object { Write-Host $_.Name }
+        Write-Host 'Installed MFC packages:'
+        (& $vswhere -latest -products * -format json | ConvertFrom-Json)[0].packages |
+          Where-Object { $_.id -like '*MFC*' } | ForEach-Object { Write-Host $_.id }
         $components = @("Microsoft.VisualStudio.Component.VC.$($toolset.Name).MFC.x86.x64")
         Write-Host "Installing MFC for $($toolset.Name): $($components -join ', ')"
-        # Start-Process splits array arguments on spaces; quote the install path explicitly.
-        $argumentString = 'modify --installPath "' + $installPath + '" --quiet --norestart --noresume'
-        foreach ($component in $components) { $argumentString += ' --add ' + $component }
-        $process = Start-Process -FilePath $setup -ArgumentList $argumentString -Wait -PassThru
-        if ($process.ExitCode -ne 0) { throw "VS installer failed with exit code $($process.ExitCode)" }
+        $modifyArgs = @('modify', '--installPath', $installPath, '--quiet', '--norestart', '--noresume')
+        foreach ($component in $components) { $modifyArgs += @('--add', $component) }
+        & $setup @modifyArgs
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "VS installer exit code $LASTEXITCODE; arguments: $($modifyArgs -join ' ')"
+          throw "VS installer failed with exit code $LASTEXITCODE"
+        }
 
 
       
@@ -167,14 +181,21 @@ jobs:
           Sort-Object { [version]$_.Name } -Descending |
           Select-Object -First 1
         if (-not $toolset) { throw 'No v143 MSVC toolset found on the runner' }
+        Write-Host 'MSVC directories:'
+        Get-ChildItem "$installPath/VC/Tools/MSVC" -Directory | ForEach-Object { Write-Host $_.Name }
+        Write-Host 'Installed MFC packages:'
+        (& $vswhere -latest -products * -format json | ConvertFrom-Json)[0].packages |
+          Where-Object { $_.id -like '*MFC*' } | ForEach-Object { Write-Host $_.id }
         $components = @("Microsoft.VisualStudio.Component.VC.$($toolset.Name).MFC.x86.x64")
         $components += 'Microsoft.VisualStudio.Component.VC.$($toolset.Name).MFC.ARM64EC'
         Write-Host "Installing MFC for $($toolset.Name): $($components -join ', ')"
-        # Start-Process splits array arguments on spaces; quote the install path explicitly.
-        $argumentString = 'modify --installPath "' + $installPath + '" --quiet --norestart --noresume'
-        foreach ($component in $components) { $argumentString += ' --add ' + $component }
-        $process = Start-Process -FilePath $setup -ArgumentList $argumentString -Wait -PassThru
-        if ($process.ExitCode -ne 0) { throw "VS installer failed with exit code $($process.ExitCode)" }
+        $modifyArgs = @('modify', '--installPath', $installPath, '--quiet', '--norestart', '--noresume')
+        foreach ($component in $components) { $modifyArgs += @('--add', $component) }
+        & $setup @modifyArgs
+        if ($LASTEXITCODE -ne 0) {
+          Write-Host "VS installer exit code $LASTEXITCODE; arguments: $($modifyArgs -join ' ')"
+          throw "VS installer failed with exit code $LASTEXITCODE"
+        }
 
 
       
