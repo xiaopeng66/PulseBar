@@ -37,7 +37,7 @@ protected:
     void SelectPage(int page);
     void EnsureGeneralPage();
     void LayoutPages();
-    void ClampToWorkArea();
+    void CenterInWorkArea();
     bool CollectSettings();
     virtual CString GetDialogName() const override;
     virtual void DoDataExchange(CDataExchange* pDX) override;

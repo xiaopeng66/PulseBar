@@ -42,12 +42,15 @@ BOOL COptionsDlg::OnInitDialog()
 {
     //设置窗口是固定尺寸：不恢复配置里保存的历史尺寸，
     //否则以前拉宽过的窗口会让内容区留出大片空白。
+    //窗口创建时用的是模板坐标(0,0)；初始化期间先保持隐藏，排布完成后才显示，
+    //否则会先闪出一个没有内容的空边框再跳到最终位置。
+    ShowWindow(SW_HIDE);
     GetWindowRect(m_min_window);
     SetRememberDlgSize(false);
     CBaseDialog::OnInitDialog();
     SetWindowPos(nullptr, 0, 0, m_min_window.Width(), m_min_window.Height(),
         SWP_NOMOVE | SWP_NOZORDER);
-    ClampToWorkArea();
+    CenterInWorkArea();
     SetIcon(theApp.GetMenuIcon(IDI_SETTINGS), FALSE);
     //与子页保持同一底色：子页隐藏重绘时父窗口会用该底色擦除，避免露出白色区块
     SetBackgroundColor(theApp.m_win_version.IsWindows11OrLater() ? RGB(249, 249, 249) : RGB(255, 255, 255));
@@ -81,7 +84,12 @@ BOOL COptionsDlg::OnInitDialog()
     m_ready = true;
     SelectPage(m_tab_selected);
     if (m_tab_selected >= 3 && !m_tab3_created)
+    {
         EndDialog(IDCANCEL);
+        return TRUE;
+    }
+    //首屏已排布完成，此时一次显示到位，不再让窗口先以空内容闪现。
+    ShowWindow(SW_SHOWNORMAL);
     return TRUE;
 }
 
@@ -204,33 +212,25 @@ void COptionsDlg::LayoutPages()
     GetDlgItem(IDOK)->MoveWindow(rect.right - margin - button_width * 3 - gap * 2, top, button_width, button_height);
 }
 
-void COptionsDlg::ClampToWorkArea()
+void COptionsDlg::CenterInWorkArea()
 {
     CRect rect;
     GetWindowRect(rect);
-    HMONITOR monitor = MonitorFromWindow(GetSafeHwnd(), MONITOR_DEFAULTTONEAREST);
+    //在光标所在显示器的工作区居中：设置面板由托盘或任务栏菜单打开，
+    //光标所在显示器才是用户正在看的那块屏。
+    POINT cursor{};
+    ::GetCursorPos(&cursor);
+    HMONITOR monitor = ::MonitorFromPoint(cursor, MONITOR_DEFAULTTONEAREST);
     MONITORINFO info{};
     info.cbSize = sizeof(info);
     if (::GetMonitorInfo(monitor, &info) == 0)
         return;
     const CRect work(info.rcWork);
-    int dx = 0;
-    int dy = 0;
-    if (rect.Width() >= work.Width())
-        dx = work.left - rect.left;
-    else if (rect.left < work.left)
-        dx = work.left - rect.left;
-    else if (rect.right > work.right)
-        dx = work.right - rect.right;
-    if (rect.Height() >= work.Height())
-        dy = work.top - rect.top;
-    else if (rect.top < work.top)
-        dy = work.top - rect.top;
-    else if (rect.bottom > work.bottom)
-        dy = work.bottom - rect.bottom;
-    if (dx != 0 || dy != 0)
-        SetWindowPos(nullptr, rect.left + dx, rect.top + dy, 0, 0,
-            SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    const int width = min(rect.Width(), work.Width());
+    const int height = min(rect.Height(), work.Height());
+    const int x = work.left + (work.Width() - width) / 2;
+    const int y = work.top + (work.Height() - height) / 2;
+    SetWindowPos(nullptr, x, y, width, height, SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
 bool COptionsDlg::CollectSettings()

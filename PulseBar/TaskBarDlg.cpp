@@ -236,6 +236,37 @@ void CTaskBarDlg::ShowInfo(CDC* pDC)
 #endif
 }
 
+namespace
+{
+    //硬件占用分档阈值：达到预警后数值改用主题的 warn 色，达到危险后改用 danger 色。
+    constexpr int PERCENT_COLOR_WARN = 60;
+    constexpr int PERCENT_COLOR_DANGER = 85;
+    //无主题(经典)或自定义主题未提供警示色时的兜底配色。
+    constexpr COLORREF DEFAULT_WARN_COLOR = RGB(230, 152, 40);
+    constexpr COLORREF DEFAULT_DANGER_COLOR = RGB(226, 64, 52);
+
+    //返回该显示项的占用百分比；非百分比型项目返回 -1。
+    int GetItemUsagePercent(DisplayItem type)
+    {
+        switch (type)
+        {
+        case TDI_CPU:
+            return theApp.m_cpu_usage;
+        case TDI_MEMORY:
+            return theApp.m_memory_usage;
+        case TDI_GPU_USAGE:
+            return theApp.m_gpu_usage;
+        case TDI_DEDICATED_GPU_USAGE:
+            return theApp.m_dedicated_gpu_memory_pct;
+        case TDI_HDD_USAGE:
+            return theApp.m_hdd_usage;
+        default:
+            return -1;
+        }
+    }
+}
+
+
 void CTaskBarDlg::DrawDisplayItem(IDrawCommon& drawer, DisplayItem type, CRect rect, int label_width, bool vertical)
 {
     //设置要绘制的文本颜色
@@ -275,6 +306,18 @@ void CTaskBarDlg::DrawDisplayItem(IDrawCommon& drawer, DisplayItem type, CRect r
         //未设置任何颜色时的默认配色:标签浅灰、数值白色,层级更清晰
         label_color = RGB(190, 190, 190);
         text_color = RGB(255, 255, 255);
+    }
+
+    //硬件占用按高低分档：只改数值颜色，标签保持主题配色不变；
+    //用户显式指定了逐项颜色时不覆盖其选择。
+    if (theApp.m_taskbar_data.percent_color_enabled
+        && !theApp.m_taskbar_data.specify_each_item_color)
+    {
+        const int usage = GetItemUsagePercent(type);
+        if (usage >= PERCENT_COLOR_DANGER)
+            text_color = (cur_theme != nullptr) ? cur_theme->danger : DEFAULT_DANGER_COLOR;
+        else if (usage >= PERCENT_COLOR_WARN)
+            text_color = (cur_theme != nullptr) ? cur_theme->warn : DEFAULT_WARN_COLOR;
     }
 
     //设置标签和数值的矩形区域
@@ -402,7 +445,18 @@ void CTaskBarDlg::DrawPluginItem(IDrawCommon& drawer, IPluginItem* item, CRect r
     //设置要绘制的文本颜色
     COLORREF label_text_color{};
     COLORREF value_text_color{};
-    if (theApp.m_taskbar_data.specify_each_item_color)
+    //插件项与内置项共用同一套配色规则：启用主题时用主题配色，否则用逐项颜色，
+    //都没有时给出一组可见的默认色。此前这里取的是 label 色且没有默认值，
+    //插件文字在深色主题下会发黑。
+    const TaskbarThemeInfo* cur_theme = GetActiveTaskbarTheme();
+    const bool theme_active = (cur_theme != nullptr && theApp.m_taskbar_data.tb_theme != 0
+        && !theApp.m_taskbar_data.specify_each_item_color);
+    if (theme_active)
+    {
+        label_text_color = cur_theme->label;
+        value_text_color = cur_theme->value;
+    }
+    else if (theApp.m_taskbar_data.specify_each_item_color)
     {
         label_text_color = theApp.m_taskbar_data.text_colors[item].label;
         value_text_color = theApp.m_taskbar_data.text_colors[item].value;
@@ -410,7 +464,29 @@ void CTaskBarDlg::DrawPluginItem(IDrawCommon& drawer, IPluginItem* item, CRect r
     else if (!theApp.m_taskbar_data.text_colors.empty())
     {
         label_text_color = theApp.m_taskbar_data.text_colors.begin()->second.label;
-        value_text_color = theApp.m_taskbar_data.text_colors.begin()->second.label;
+        value_text_color = theApp.m_taskbar_data.text_colors.begin()->second.value;
+        if (value_text_color == 0)
+            value_text_color = label_text_color;
+        if (label_text_color == value_text_color)
+        {
+            label_text_color = RGB(GetRValue(label_text_color) * 3 / 4,
+                GetGValue(label_text_color) * 3 / 4, GetBValue(label_text_color) * 3 / 4);
+        }
+    }
+    else
+    {
+        label_text_color = RGB(190, 190, 190);
+        value_text_color = RGB(255, 255, 255);
+    }
+    //声明了资源占用图的插件项同样按占用高低分档变色，与内置项保持一致。
+    if (theApp.m_taskbar_data.percent_color_enabled && !theApp.m_taskbar_data.specify_each_item_color
+        && plugin != nullptr && item->IsDrawResourceUsageGraph())
+    {
+        const int usage = item->GetResourceUsageGraphValue() * 100;
+        if (usage >= PERCENT_COLOR_DANGER)
+            value_text_color = (cur_theme != nullptr) ? cur_theme->danger : DEFAULT_DANGER_COLOR;
+        else if (usage >= PERCENT_COLOR_WARN)
+            value_text_color = (cur_theme != nullptr) ? cur_theme->warn : DEFAULT_WARN_COLOR;
     }
 
     if (plugin != nullptr && plugin->GetAPIVersion() >= 2)
@@ -1570,7 +1646,11 @@ void CTaskBarDlg::OnTimer(UINT_PTR nIDEvent)
 
         //每秒钟重新计算窗口的宽度；菜单弹出期间跳过，避免菜单操作时面板宽度跳动
         if (!m_menu_popuped)
+        {
             CalculateWindowSize();
+            if (m_is_width_changed)
+                AdjustWindowPos();
+        }
     }
 
     CDialogEx::OnTimer(nIDEvent);

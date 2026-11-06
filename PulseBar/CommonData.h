@@ -274,20 +274,22 @@ struct TaskbarThemeInfo
     COLORREF label;         //标签文字色
     COLORREF value;         //数值文字色
     COLORREF accent;        //点缀/渐变色
+    COLORREF warn;          //硬件占用达到预警阈值时的数值颜色
+    COLORREF danger;        //硬件占用达到危险阈值时的数值颜色
     bool value_bold;        //数值是否加粗
     int style;              //绘制风格 0=圆角面板 1=渐变面板 2=底部渐变条 3=描边面板 4=胶囊
 };
 
 const TaskbarThemeInfo AllTaskbarThemes[] = {
-    //  id  name                    bg_r,g,b        label      value      accent     bold  style
-    { 1, L"圆角深色面板",        32,  34,  40,  RGB(150,150,155), RGB(255,255,255), RGB( 80,160,255), true,  0 },
-    { 2, L"渐变蓝紫",            28,  30,  44,  RGB(160,165,185), RGB(255,255,255), RGB( 90,120,255), true,  1 },
-    { 3, L"青绿玻璃",            18,  38,  36,  RGB(140,190,180), RGB(220,255,250), RGB( 40,200,170), true,  0 },
-    { 4, L"暗夜霓虹",            16,  16,  24,  RGB(120,120,140), RGB(255,110,180), RGB(255, 90,160), true,  3 },
-    { 5, L"日曜浅色",           246, 246, 248,  RGB(110,110,120), RGB( 40, 40, 48), RGB(255,150, 60), true,  0 },
-    { 6, L"晨雾白金",           240, 238, 234,  RGB(130,120,105), RGB( 60, 50, 40), RGB(200,160, 90), true,  3 },
-    { 7, L"靛夜极光",            20,  24,  48,  RGB(140,150,190), RGB(180,240,255), RGB( 60,220,255), true,  1 },
-    { 8, L"胶囊黑金",            24,  22,  20,  RGB(170,155,130), RGB(255,220,150), RGB(230,180, 80), true,  4 },
+    //  id  name                    bg_r,g,b        label      value      accent     warn        danger      bold  style
+    { 1, L"圆角深色面板",        32,  34,  40,  RGB(150,150,155), RGB(255,255,255), RGB( 80,160,255), RGB(255,193, 64), RGB(255, 92, 84), true,  0 },
+    { 2, L"渐变蓝紫",            28,  30,  44,  RGB(160,165,185), RGB(255,255,255), RGB( 90,120,255), RGB(255,200, 96), RGB(255,110,120), true,  1 },
+    { 3, L"青绿玻璃",            18,  38,  36,  RGB(140,190,180), RGB(220,255,250), RGB( 40,200,170), RGB(255,208, 96), RGB(255,120,102), true,  0 },
+    { 4, L"暗夜霓虹",            16,  16,  24,  RGB(150,150,175), RGB(255,110,180), RGB(255, 90,160), RGB(255,200, 80), RGB(255, 70,120), true,  3 },
+    { 5, L"日曜浅色",           246, 246, 248,  RGB( 96, 96,108), RGB( 40, 40, 48), RGB(255,150, 60), RGB(150, 96,  0), RGB(198, 48, 48), true,  0 },
+    { 6, L"晨雾白金",           240, 238, 234,  RGB(108, 98, 84), RGB( 60, 50, 40), RGB(200,160, 90), RGB(146, 94,  0), RGB(188, 52, 40), true,  3 },
+    { 7, L"靛夜极光",            20,  24,  48,  RGB(140,150,190), RGB(180,240,255), RGB( 60,220,255), RGB(255,206, 96), RGB(255,120,130), true,  1 },
+    { 8, L"胶囊黑金",            24,  22,  20,  RGB(170,155,130), RGB(255,220,150), RGB(230,180, 80), RGB(240,190, 86), RGB(232, 88, 70), true,  4 },
 };
 const int TASKBAR_THEME_COUNT = sizeof(AllTaskbarThemes) / sizeof(AllTaskbarThemes[0]);
 const TaskbarThemeInfo* FindTaskbarTheme(int id);
@@ -326,6 +328,9 @@ struct TaskBarSettingData : public PublicSettingData
     COLORREF custom_accent{ RGB(80, 160, 255) };    //点缀色(描边/点缀条/渐变第二色)
     bool custom_value_bold{ false };                //数值加粗
     int custom_style{ 0 };                          //0纯色圆角面板 1渐变面板 2底部点缀条 3描边 4胶囊
+    //硬件占用(CPU/内存/GPU/硬盘)按高低分档变色。阈值固定为 60%/85%，
+    //颜色取自当前主题的 warn/danger，使每套主题保持自己的配色风格。
+    bool percent_color_enabled{ true };
     //是否启用逐像素alpha渲染:背景图模式或任一内置主题(1~8)都走GDI主题面板绘制
     bool IsTaskbarThemePanel() const;
     bool IsTaskbarTransparent() const;

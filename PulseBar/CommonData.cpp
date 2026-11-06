@@ -36,6 +36,20 @@ const TaskbarThemeInfo* GetActiveTaskbarTheme()
         custom.label = data.custom_label;
         custom.value = data.custom_value;
         custom.accent = data.custom_accent;
+        //自定义主题没有单独配置警示色：按底色亮度取一套与其明暗相配的
+        //预警/危险色，浅底用深色保证可读，深底用亮色保证醒目。
+        const int luminance = (GetRValue(data.custom_bg) * 299 + GetGValue(data.custom_bg) * 587
+            + GetBValue(data.custom_bg) * 114) / 1000;
+        if (luminance >= 160)
+        {
+            custom.warn = RGB(176, 118, 10);
+            custom.danger = RGB(190, 48, 44);
+        }
+        else
+        {
+            custom.warn = RGB(255, 198, 74);
+            custom.danger = RGB(255, 100, 92);
+        }
         custom.value_bold = data.custom_value_bold;
         custom.style = data.custom_style;
         return &custom;

@@ -317,6 +317,7 @@ void CPulseBarApp::LoadConfig()
         m_taskbar_data.tb_panel_opacity = 70;
     m_taskbar_data.tb_use_background_image = ini.GetBool(L"task_bar", L"tb_use_background_image", false);
     m_taskbar_data.tb_background_image = ini.GetString(L"task_bar", L"tb_background_image", L"");
+    m_taskbar_data.percent_color_enabled = ini.GetBool(L"task_bar", L"percent_color", true);
     m_taskbar_data.dark_default_style = ini.GetInt(L"task_bar", L"dark_default_style", 0);
     m_taskbar_data.light_default_style = ini.GetInt(L"task_bar", L"light_default_style", TASKBAR_DEFAULT_LIGHT_STYLE_INDEX);
 
@@ -483,6 +484,7 @@ void CPulseBarApp::SaveConfig()
     ini.WriteInt(L"task_bar", L"tb_panel_opacity", m_taskbar_data.tb_panel_opacity);
     ini.WriteBool(L"task_bar", L"tb_use_background_image", m_taskbar_data.tb_use_background_image);
     ini.WriteString(L"task_bar", L"tb_background_image", m_taskbar_data.tb_background_image);
+    ini.WriteBool(L"task_bar", L"percent_color", m_taskbar_data.percent_color_enabled);
     ini.WriteInt(L"task_bar", L"dark_default_style", m_taskbar_data.dark_default_style);
     ini.WriteInt(L"task_bar", L"light_default_style", m_taskbar_data.light_default_style);
     ini.WriteBool(L"task_bar", L"auto_set_background_color", m_taskbar_data.auto_set_background_color);
