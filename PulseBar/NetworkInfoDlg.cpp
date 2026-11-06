@@ -298,6 +298,7 @@ BEGIN_MESSAGE_MAP(CNetworkInfoDlg, CBaseDialog)
     ON_BN_CLICKED(IDC_NEXT_BUTTON, &CNetworkInfoDlg::OnBnClickedNextButton)
     ON_WM_TIMER()
     ON_WM_MOUSEWHEEL()
+    ON_WM_SIZE()
     ON_NOTIFY(NM_DBLCLK, IDC_INFO_LIST1, &CNetworkInfoDlg::OnNMDblclkInfoList1)
 END_MESSAGE_MAP()
 
@@ -586,4 +587,23 @@ void CNetworkInfoDlg::OnNMDblclkInfoList1(NMHDR* pNMHDR, LRESULT* pResult)
         }
     }
     *pResult = 0;
+}
+
+
+void CNetworkInfoDlg::OnSize(UINT nType, int cx, int cy)
+{
+    CBaseDialog::OnSize(nType, cx, cy);
+    //窗口拉宽时让值列跟着变宽，避免右侧留下大片空白。
+    //按列表自身客户区计算，和 OnInitDialog 的初始列宽保持一致。
+    if (!::IsWindow(m_info_list.GetSafeHwnd()) || cx <= 0)
+        return;
+    CRect list_rect;
+    m_info_list.GetClientRect(list_rect);
+    if (list_rect.Width() <= 0 || m_info_list.GetHeaderCtrl() == nullptr
+        || m_info_list.GetHeaderCtrl()->GetItemCount() < 2)
+        return;
+    const int width0 = max(theApp.DPI(60), list_rect.Width() / 4);
+    const int width1 = max(theApp.DPI(120), list_rect.Width() - width0 - theApp.DPI(20) - 1);
+    m_info_list.SetColumnWidth(0, width0);
+    m_info_list.SetColumnWidth(1, width1);
 }

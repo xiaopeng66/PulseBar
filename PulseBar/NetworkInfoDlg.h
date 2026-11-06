@@ -68,4 +68,5 @@ public:
     afx_msg void OnTimer(UINT_PTR nIDEvent);
     afx_msg BOOL OnMouseWheel(UINT nFlags, short zDelta, CPoint pt);
     afx_msg void OnNMDblclkInfoList1(NMHDR* pNMHDR, LRESULT* pResult);
+	afx_msg void OnSize(UINT nType, int cx, int cy);
 };
