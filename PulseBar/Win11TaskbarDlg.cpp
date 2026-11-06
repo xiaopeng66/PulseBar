@@ -4,14 +4,19 @@
 
 void CWin11TaskbarDlg::AdjustTaskbarWndPos(bool force_adjust)
 {
-    ::GetWindowRect(m_hNotify, m_rcNotify);
-    ::GetWindowRect(m_hStart, m_rcStart);
-    m_rcStart.MoveToXY(m_rcStart.left - m_rcTaskbar.left, m_rcStart.top - m_rcTaskbar.top);
+    const bool notify_rect_valid = m_hNotify != nullptr && ::GetWindowRect(m_hNotify, m_rcNotify) != FALSE;
+    if (!notify_rect_valid)
+        m_rcNotify.SetRectEmpty();
+    const bool start_rect_valid = m_hStart != nullptr && ::GetWindowRect(m_hStart, m_rcStart) != FALSE;
+    if (start_rect_valid)
+        m_rcStart.MoveToXY(m_rcStart.left - m_rcTaskbar.left, m_rcStart.top - m_rcTaskbar.top);
+    else
+        m_rcStart.SetRectEmpty();
 
     //设置窗口大小
     m_rect.right = m_rect.left + m_window_width;
     m_rect.bottom = m_rect.top + m_window_height;
-    if (force_adjust || m_rcNotify.Width() != m_last_notify_width || m_rcStart.left != m_last_start_pos)   //如果最小化窗口的宽度改变了，重新设置任务栏窗口的位置
+    if (force_adjust || !notify_rect_valid || m_rcNotify.Width() != m_last_notify_width || m_rcStart.left != m_last_start_pos)   //如果最小化窗口的宽度改变了，重新设置任务栏窗口的位置
     {
         m_last_notify_width = m_rcNotify.Width();
         m_last_start_pos = m_rcStart.left;
@@ -28,9 +33,9 @@ void CWin11TaskbarDlg::AdjustTaskbarWndPos(bool force_adjust)
             //else
             //{
             //通知区窗口的水平位置
-            int notify_x_pos = m_rcNotify.left;
+            int notify_x_pos = notify_rect_valid ? m_rcNotify.left - m_rcTaskbar.left : 0;
             //没有获取到通知区位置的情况
-            if (notify_x_pos == 0)
+            if (notify_x_pos <= 0)
             {
                 //Win11副屏没有通知区窗口，这里使用固定的值（88像素的系统时间区域）
                 if (m_is_secondary_display)
@@ -82,6 +87,15 @@ void CWin11TaskbarDlg::AdjustTaskbarWndPos(bool force_adjust)
         //if (m_rcTaskbar.Height() > m_rect.Height() && m_rect.bottom > m_rcTaskbar.Height())
         //    m_rect.MoveToY(m_rcTaskbar.Height() - m_rect.Height());
 
+        //m_rect 使用任务栏客户坐标；最终提交前夹紧到任务栏，副屏负屏幕坐标不能泄漏进这里。
+        const int taskbar_width = max(0, m_rcTaskbar.Width());
+        const int taskbar_height = max(0, m_rcTaskbar.Height());
+        const int rect_width = min(max(0, m_rect.Width()), taskbar_width);
+        const int rect_height = min(max(0, m_rect.Height()), taskbar_height);
+        m_rect.left = max(0, min(m_rect.left, taskbar_width - rect_width));
+        m_rect.top = max(0, min(m_rect.top, taskbar_height - rect_height));
+        m_rect.right = m_rect.left + rect_width;
+        m_rect.bottom = m_rect.top + rect_height;
         MoveWindow(m_rect);
     }
 }
@@ -90,7 +104,10 @@ void CWin11TaskbarDlg::InitTaskbarWnd()
 {
     m_hNotify = ::FindWindowEx(m_hTaskbar, 0, L"TrayNotifyWnd", NULL);
     m_hStart = ::FindWindowEx(m_hTaskbar, nullptr, L"Start", NULL);
-    ::GetWindowRect(m_hNotify, m_rcNotify);
+    if (m_hNotify != nullptr)
+        ::GetWindowRect(m_hNotify, m_rcNotify);
+    else
+        m_rcNotify.SetRectEmpty();
 }
 
 void CWin11TaskbarDlg::ResetTaskbarPos()

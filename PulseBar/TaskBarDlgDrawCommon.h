@@ -38,6 +38,21 @@ namespace DrawCommonHelper
 {
     void LogDeviceRecreateReason(HRESULT hr);
 
+    struct FrameSubmitResult
+    {
+        bool active{false};
+        bool succeeded{false};
+        HRESULT failure_hr{S_OK};
+    };
+
+    //TaskBarDlg 在一帧开始/结束时使用；缓冲器析构提交成功前不会替换上一帧。
+    unsigned int FrameRetryDelay(unsigned int consecutive_failures) noexcept;
+    void BeginFrameSubmit() noexcept;
+    void MarkFrameSubmitFailed(HRESULT hr) noexcept;
+    bool IsFrameSubmitFailed() noexcept;
+    void MarkFrameSubmitSucceeded() noexcept;
+    FrameSubmitResult FinishFrameSubmit() noexcept;
+
     namespace Details
     {
         template <typename T, T First>
@@ -372,7 +387,7 @@ public:
          */
         auto Resize(const D2D1_SIZE_U size)
             -> Microsoft::WRL::ComPtr<IDXGISurface>;
-        void Present();
+        bool Present();
         auto GetD3D10Device1()
             -> Microsoft::WRL::ComPtr<ID3D10Device1>;
         bool IsInvalid() const;
@@ -470,7 +485,7 @@ public:
      * @brief 当m_render_type = DrawCommonHelper::RenderType::D2D1_WITH_DCOMPOSITION时才会执行
      *
      */
-    void PresentWhenUseDComposition();
+    bool PresentWhenUseDComposition();
     /**
      * @brief 当m_render_type = DrawCommonHelper::RenderType::D2D1时才返回非空值
      *
@@ -976,6 +991,7 @@ private:
     CTaskBarDlgDrawCommonWindowSupport* m_p_window_support{nullptr};
     CD2D1DeviceContextWindowSupport* m_p_d2d1_device_context_support{nullptr};
     Microsoft::WRL::ComPtr<ID2D1DeviceContext> m_p_device_context{};
+    bool m_draw_started{};
     class CGdiInteropObject
     {
     public:
@@ -1084,8 +1100,11 @@ class CTaskBarDlgDrawBufferUseDComposition : public IDrawBuffer
 {
 private:
     CD2D1DeviceContextWindowSupport* m_p_d2d1_device_context_support{};
+    HWND m_target_hwnd{};
 
 public:
-    CTaskBarDlgDrawBufferUseDComposition(CD2D1DeviceContextWindowSupport& ref_d2d1_device_context_support);
+    CTaskBarDlgDrawBufferUseDComposition(
+        CD2D1DeviceContextWindowSupport& ref_d2d1_device_context_support,
+        HWND target_hwnd);
     ~CTaskBarDlgDrawBufferUseDComposition() override;
 };

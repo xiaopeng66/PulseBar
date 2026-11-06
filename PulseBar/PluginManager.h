@@ -64,6 +64,11 @@ public:
     //所以这里必须和这段区间的宽度保持一致，否则枚举出的项目会超出可寻址范围。
     static const int MAX_PLUGIN_ITEM_COUNT = 254;
 
+    //自绘插件宽度的宿主边界。0 保留为合法的“无宽度/回退”语义；非零值
+    //必须落在一个可见且不会吞掉整块任务栏布局的范围内。
+    static constexpr int MIN_PLUGIN_ITEM_WIDTH = 1;
+    static constexpr int MAX_PLUGIN_ITEM_WIDTH = 4096;
+
 private:
     static void ReplacePluginDrawTextFunction(HMODULE plgin_dll_module) noexcept;
     static void ReplaceMfcDrawTextFunction() noexcept;

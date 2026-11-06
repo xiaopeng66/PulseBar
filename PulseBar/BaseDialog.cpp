@@ -52,7 +52,10 @@ void CBaseDialog::SetMinSize(int cx, int cy)
 
 HWND CBaseDialog::GetUniqueHandel(LPCTSTR dlg_name)
 {
-    return m_unique_hwnd[dlg_name];
+    if (dlg_name == nullptr || *dlg_name == _T('\0'))
+        return nullptr;
+    const auto iter = m_unique_hwnd.find(dlg_name);
+    return iter == m_unique_hwnd.end() ? nullptr : iter->second;
 }
 
 const std::map<CString, HWND>& CBaseDialog::AllUniqueHandels()
@@ -306,7 +309,11 @@ END_MESSAGE_MAP()
 
 BOOL CBaseDialog::OnInitDialog()
 {
-    m_unique_hwnd[GetDialogName()] = m_hWnd;
+    const CString dialog_name = GetDialogName();
+    //页内子对话框通常没有唯一名称；不能把所有空名称页面登记到同一
+    //map 项，否则托盘/DoModal 聚焦时可能拿到一个隐藏 tab 页的 HWND。
+    if (!dialog_name.IsEmpty())
+        m_unique_hwnd[dialog_name] = m_hWnd;
     CDialog::OnInitDialog();
 
     // TODO:  在此添加额外的初始化
@@ -392,11 +399,14 @@ void CBaseDialog::OnDestroy()
 {
     CDialog::OnDestroy();
 
-    // TODO: 在此处添加消息处理程序代码
-    m_unique_hwnd[GetDialogName()] = NULL;
+    // TODO:  在此处添加消息处理代码
+    const CString dialog_name = GetDialogName();
+    if (!dialog_name.IsEmpty())
+        m_unique_hwnd[dialog_name] = NULL;
     SaveConfig();
 
 }
+
 
 
 void CBaseDialog::OnGetMinMaxInfo(MINMAXINFO* lpMMI)
@@ -430,8 +440,11 @@ void CBaseDialog::OnSize(UINT nType, int cx, int cy)
 
 INT_PTR CBaseDialog::DoModal()
 {
-    HWND unique_hwnd{ m_unique_hwnd[GetDialogName()] };
-    if (unique_hwnd != NULL && !GetDialogName().IsEmpty())      ///如果对话框已存在，则显示已存在的对话框
+    const CString dialog_name = GetDialogName();
+    HWND unique_hwnd = nullptr;
+    if (!dialog_name.IsEmpty())
+        unique_hwnd = GetUniqueHandel(dialog_name);
+    if (::IsWindow(unique_hwnd))      ///如果对话框已存在，则显示已存在的对话框
     {
         ::ShowWindow(unique_hwnd, SW_RESTORE);
         ::SetForegroundWindow(unique_hwnd);

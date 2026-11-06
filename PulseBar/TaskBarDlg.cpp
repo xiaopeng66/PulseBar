@@ -27,6 +27,8 @@ IMPLEMENT_DYNAMIC(CTaskBarDlg, CDialogEx)
 CTaskBarDlg::CTaskBarDlg(CWnd* pParent /*=NULL*/)
     : CDialogEx(IDD_TASK_BAR_DIALOG, pParent)
 {
+    static UINT_PTR next_instance_token{};
+    m_instance_token = ++next_instance_token;
 }
 
 CTaskBarDlg::~CTaskBarDlg()
@@ -67,6 +69,7 @@ BEGIN_MESSAGE_MAP(CTaskBarDlg, CDialogEx)
     ON_WM_LBUTTONDBLCLK()
     ON_WM_TIMER()
     ON_WM_PAINT()
+    ON_WM_ERASEBKGND()
     ON_WM_CLOSE()
     ON_WM_LBUTTONUP()
     ON_MESSAGE(WM_EXITMENULOOP, &CTaskBarDlg::OnExitmenuloop)
@@ -83,6 +86,7 @@ void CTaskBarDlg::ShowInfo(CDC* pDC)
         return;
     if (m_rect.IsRectEmpty() || m_rect.IsRectNull())
         return;
+    DrawCommonHelper::BeginFrameSubmit();
     if (m_supported_render_enums.IsD2D1Enabled())
     {
         auto last_update_layered_window_error =
@@ -127,9 +131,9 @@ void CTaskBarDlg::ShowInfo(CDC* pDC)
                   auto p_draw_common = static_cast<CDrawCommon*>(p_draw_common_interface);
 
                   // 必须先于绘图对象构造
-                  EmplaceAt(p_draw_buffer, pDC, draw_rect);
-                  // 这里构造绘图对象
-                  EmplaceAt(p_draw_common);
+                  p_draw_buffer = all_involved_draw_common_objects.EmplaceDrawBuffer<CDrawDoubleBufferCached>(pDC, draw_rect);
+                  //构造完成立即接管；Create 抛异常时仍能正确析构。
+                  p_draw_common = all_involved_draw_common_objects.EmplaceDrawCommon<CDrawCommon>();
                   p_draw_common->Create(p_draw_buffer->GetMemDC(), nullptr);
                   //主题面板/背景图模式:绘制圆角/渐变/背景图,否则普通填充背景色
                   if (theApp.m_taskbar_data.IsTaskbarThemePanel())
@@ -161,7 +165,7 @@ void CTaskBarDlg::ShowInfo(CDC* pDC)
                       m_hWnd);
                   // 这里与上面相反，是先构造DrawCommon再构造Buffer
                   // 这里构造绘图对象
-                  EmplaceAt(p_draw_common);
+                  p_draw_common = all_involved_draw_common_objects.EmplaceDrawCommon<CTaskBarDlgDrawCommon>();
                   D2D1_SIZE_U d2d_size;
                   d2d_size.width = draw_rect.Width();
                   d2d_size.height = draw_rect.Height();
@@ -174,7 +178,8 @@ void CTaskBarDlg::ShowInfo(CDC* pDC)
                   p_draw_common->SetFont(m_bold_font.m_hObject ? &m_bold_font : &m_font);
                   p_draw_common->SetBackColor(theApp.m_taskbar_data.back_color);
                   // 构造buffer
-                  EmplaceAt(p_draw_buffer, this->m_d2d1_device_context_support.Get());
+                  p_draw_buffer = all_involved_draw_common_objects.EmplaceDrawBuffer<CTaskBarDlgDrawBufferUseDComposition>(
+                      this->m_d2d1_device_context_support.Get(), current_hwnd);
               }},
              {DrawCommonHelper::RenderType::D2D1,
               [&](IDrawBuffer* p_draw_buffer_interface, IDrawCommon* p_draw_common_interface)
@@ -186,7 +191,7 @@ void CTaskBarDlg::ShowInfo(CDC* pDC)
                   m_d2d1_device_context_support.Get().SetWorkingDevice(ref_d2d1_app_support.GetD3D10Device1());
                   // 这里与上面相反，是先构造DrawCommon再构造Buffer
                   // 这里构造绘图对象
-                  EmplaceAt(p_draw_common);
+                  p_draw_common = all_involved_draw_common_objects.EmplaceDrawCommon<CTaskBarDlgDrawCommon>();
                   D2D1_SIZE_U d2d_size;
                   d2d_size.width = draw_rect.Width();
                   d2d_size.height = draw_rect.Height();
@@ -200,7 +205,7 @@ void CTaskBarDlg::ShowInfo(CDC* pDC)
                   p_draw_common->SetBackColor(theApp.m_taskbar_data.back_color);
                   // 构造buffer
                   CSize draw_size{draw_rect.Width(), draw_rect.Height()};
-                  EmplaceAt(p_draw_buffer,
+                  p_draw_buffer = all_involved_draw_common_objects.EmplaceDrawBuffer<CTaskBarDlgDrawBuffer>(
                             this->m_taskbar_draw_common_window_support.Get(),
                             this->m_d2d1_device_context_support.Get(),
                             draw_size,
@@ -234,6 +239,8 @@ void CTaskBarDlg::ShowInfo(CDC* pDC)
         p_dxgi_analysis->EndCapture();
     }
 #endif
+    if (render_type == DrawCommonHelper::RenderType::DEFAULT)
+        DrawCommonHelper::MarkFrameSubmitSucceeded();
 }
 
 namespace
@@ -637,6 +644,9 @@ bool CTaskBarDlg::AdjustWindowPos(bool force_adjust)
     }
 
     m_is_width_changed = false;     //调整完窗口位置重置标志
+    CRect taskbar_rect;
+    GetWindowRect(&taskbar_rect);
+    CSpeedGraphTip::Instance().OnDpiChanged(GetDPI(), taskbar_rect);
     return true;
 }
 
@@ -709,7 +719,14 @@ UINT CTaskBarDlg::GetDPI() const
 
 void CTaskBarDlg::SetDPI(UINT dpi)
 {
+    if (dpi == 0 || dpi == m_taskbar_dpi)
+        return;
+
     m_taskbar_dpi = dpi;
+    CRect taskbar_rect;
+    if (!::IsWindow(m_hTaskbar) || !::GetWindowRect(m_hTaskbar, &taskbar_rect))
+        taskbar_rect = m_rcTaskbar;
+    CSpeedGraphTip::Instance().OnDpiChanged(dpi, taskbar_rect);
 }
 
 UINT CTaskBarDlg::DPI(UINT pixel) const
@@ -914,12 +931,28 @@ void CTaskBarDlg::SetTextFont()
     }
 }
 
+bool CTaskBarDlg::NeedsWindowRecreation() const
+{
+    CSupportedRenderEnums desired;
+    DisableRenderFeatureIfNecessary(desired);
+    const auto desired_type = desired.GetAutoFitEnum();
+    const bool needs_no_redirection = desired_type == DrawCommonHelper::RenderType::D2D1_WITH_DCOMPOSITION;
+    const bool has_no_redirection = (GetWindowLongPtr(GetSafeHwnd(), GWL_EXSTYLE) & WS_EX_NOREDIRECTIONBITMAP) != 0;
+    return desired_type != m_supported_render_enums.GetAutoFitEnum() || needs_no_redirection != has_no_redirection;
+}
+
 void CTaskBarDlg::ApplySettings()
 {
     SetTextFont();
     //主题/背景图模式变化后重新评估渲染方式(主题面板强制GDI),菜单切换主题无需重启即生效
     DisableRenderFeatureIfNecessary(m_supported_render_enums);
     CalculateWindowSize();
+    //CalculateWindowSize 只更新模型矩形；这里必须立即把新尺寸/位置提交给 HWND，
+    //不能等任务栏定时器，否则新 m_rect 会与旧 client size 并存一段时间。
+    AdjustWindowPos(true);
+    Invalidate(FALSE);
+    UpdateWindow();
+    CSpeedGraphTip::Instance().Refresh();
     if (!theApp.m_taskbar_data.show_speed_graph_tip)
         HideSpeedGraphTip();
     //开启悬停面板后立即收掉可能残留的原生tooltip，避免两者同时显示
@@ -931,7 +964,8 @@ void CTaskBarDlg::InvalidateIfNeeded()
 {
     //重绘按监控样本失效，覆盖数值、插件文本、自绘内容及图表等所有任务栏显示数据。
     //采样通知每秒到达，避免在100ms定时器中轮询插件取值函数。
-    if (m_monitor_data_updated || m_menu_popuped)
+    //菜单弹出期间由系统负责菜单窗口绘制，不能因为 m_menu_popuped 保持原窗口空转重绘。
+    if (m_monitor_data_updated && !m_render_retry_pending)
     {
         m_monitor_data_updated = false;
         Invalidate(FALSE);
@@ -1264,13 +1298,18 @@ BOOL CTaskBarDlg::OnInitDialog()
 
     m_pDC = GetDC();
     m_hTaskbar = FindTaskbarHandle(m_is_secondary_display); //查找任务栏的句柄
-    ::GetWindowRect(m_hTaskbar, m_rcTaskbar);   //获得任务栏的矩形区域
+    if (!::IsWindow(m_hTaskbar) || !::GetWindowRect(m_hTaskbar, m_rcTaskbar))
+        return TRUE;    //宿主检查 IsReadyToShow，不显示无效 Shell 上的半初始化窗口。
 
     //设置窗口透明色
     ApplyWindowTransparentColor();
 
     InitTaskbarWnd();
-    m_connot_insert_to_task_bar = !(::SetParent(this->m_hWnd, GetParentHwnd())); //把程序窗口设置成任务栏的子窗口
+    const HWND taskbar_parent = GetParentHwnd();
+    if (!::IsWindow(taskbar_parent))
+        return TRUE;
+    ::SetParent(this->m_hWnd, taskbar_parent);
+    m_connot_insert_to_task_bar = ::GetParent(m_hWnd) != taskbar_parent;
 
     //根据已经确定的任务栏最小化窗口区域得到屏幕并获得所在屏幕的DPI（Windows 8.1及其以上）
     if (theApp.m_win_version.IsWindows8Point1OrLater())
@@ -1310,6 +1349,7 @@ BOOL CTaskBarDlg::OnInitDialog()
 
     SetTimer(TASKBAR_TIMER, 1000, NULL);
 
+    m_initialization_succeeded = !m_rect.IsRectEmpty();
     return TRUE;  // return TRUE unless you set the focus to a control
                   // 异常: OCX 属性页应返回 FALSE
 }
@@ -1406,67 +1446,76 @@ namespace
 
 void CTaskBarDlg::OnRButtonUp(UINT nFlags, CPoint point)
 {
-    // TODO: 在此添加消息处理程序代码和/或调用默认值
-    m_menu_popuped = true;
-    m_tool_tips.Pop();
-    ITMPlugin* plugin{};
-    bool is_plugin_item_clicked = (CheckClickedItem(point) && m_clicked_item.IsPlugin() && m_clicked_item.PluginItem() != nullptr);
-    if (is_plugin_item_clicked)
+    const HWND source_hwnd=GetSafeHwnd();
+    m_menu_popuped=true;
+    CSpeedGraphTip::Instance().ForceHide();
+    m_graph_tip_showing=false;
+    if (::IsWindow(m_tool_tips.GetSafeHwnd()))
+        m_tool_tips.Pop();
+    IPluginItem* item=CheckClickedItem(point) && m_clicked_item.IsPlugin() ? m_clicked_item.PluginItem() : nullptr;
+    ITMPlugin* plugin=item != nullptr ? theApp.m_plugins.GetPluginByItem(item) : nullptr;
+    if (plugin != nullptr)
     {
-        plugin = theApp.m_plugins.GetPluginByItem(m_clicked_item.PluginItem());
-        if (plugin != nullptr && plugin->GetAPIVersion() >= 3)
+        try
         {
-            if (m_clicked_item.PluginItem()->OnMouseEvent(IPluginItem::MT_RCLICKED, point.x, point.y, (void*)GetSafeHwnd(), IPluginItem::MF_TASKBAR_WND) != 0)
+            const int api=plugin->GetAPIVersion();
+            if (!::IsWindow(source_hwnd)) return;
+            if (api>=3)
             {
-                //插件拦截右键事件时没有菜单循环可接收 WM_EXITMENULOOP。
-                m_menu_popuped = false;
-                return;
+                const int handled=item->OnMouseEvent(IPluginItem::MT_RCLICKED,point.x,point.y,
+                    static_cast<void*>(source_hwnd),IPluginItem::MF_TASKBAR_WND);
+                //回调可重入关闭/重建窗口，后续不得读取已销毁的 this。
+                if (!::IsWindow(source_hwnd)) return;
+                if (handled!=0) { m_menu_popuped=false; return; }
             }
         }
+        catch (CException* exception) { exception->Delete(); }
+        catch (...) { CCommon::WriteLog("Plugin right-click callback failed.",theApp.m_log_path.c_str()); }
+        if (!::IsWindow(source_hwnd)) return;
     }
-
-    CPoint point1;  //定义一个用于确定光标位置的位置
-    GetCursorPos(&point1);  //获取当前光标的位置以便使菜单跟随光标
-    //S6: 右键菜单弹出前隐藏悬停面板,避免菜单与置顶面板重叠
-    CSpeedGraphTip::Instance().ForceHide();
-    m_graph_tip_showing = false;
-
-    CMenu* source_menu = is_plugin_item_clicked ? &theApp.m_taskbar_menu_plugin : &theApp.m_taskbar_menu;
-    CMenu* pMenu = FindMenuContainingCommand(source_menu, ID_DISPLAY_SETTINGS);
-    if (pMenu != nullptr)
+    theApp.UpdateTrayPluginMenu();
+    if (!::IsWindow(source_hwnd)) return;
+    CMenu* source=plugin != nullptr ? &theApp.m_taskbar_menu_plugin : &theApp.m_taskbar_menu;
+    CMenu* menu=FindMenuContainingCommand(source,ID_DISPLAY_SETTINGS);
+    if (menu==nullptr) { m_menu_popuped=false; return; }
+    try
     {
         if (plugin != nullptr)
         {
-            //按动态插件子菜单句柄定位插件菜单项，不依赖其在资源中的位置。
-            CMenu* plugin_parent{};
-            int plugin_position{};
-            if (FindSubmenuByHandle(pMenu, theApp.m_taskbar_menu_plugin_sub_menu.GetSafeHmenu(), plugin_parent, plugin_position))
+            CMenu* parent{};
+            int position{};
+            if (FindSubmenuByHandle(menu,theApp.m_taskbar_menu_plugin_sub_menu.GetSafeHmenu(),parent,position))
             {
-                //GetInfo(TMI_NAME) 按 ABI 可能返回空指针，而 ModifyMenu 的 MF_STRING 项
-                //要求文本指针有效，这里用空串兜底。
-                const wchar_t* plugin_name = plugin->GetInfo(ITMPlugin::TMI_NAME);
-                plugin_parent->ModifyMenu(plugin_position, MF_BYPOSITION | MF_POPUP | MF_STRING,
-                    reinterpret_cast<UINT_PTR>(theApp.m_taskbar_menu_plugin_sub_menu.GetSafeHmenu()),
-                    plugin_name != nullptr ? plugin_name : L"");
-
-                HICON plugin_icon{};
-                if (plugin->GetAPIVersion() >= 5)
-                    plugin_icon = (HICON)plugin->GetPluginIcon();
-                if (plugin_icon != nullptr)
-                    CMenuIcon::AddIconToMenuItem(plugin_parent->GetSafeHmenu(), plugin_position, TRUE, plugin_icon);
+                const wchar_t* name=plugin->GetInfo(ITMPlugin::TMI_NAME);
+                const std::wstring title=name!=nullptr ? std::wstring(name) : std::wstring{};
+                if (!::IsWindow(source_hwnd)) return;
+                parent->ModifyMenu(position,MF_BYPOSITION | MF_POPUP | MF_STRING,
+                    reinterpret_cast<UINT_PTR>(theApp.m_taskbar_menu_plugin_sub_menu.GetSafeHmenu()),title.c_str());
             }
         }
-        //更新插件子菜单
-        theApp.UpdatePluginMenu(&theApp.m_taskbar_menu_plugin_sub_menu, plugin, 2);
-        //弹出菜单
-        pMenu->TrackPopupMenu(TPM_LEFTALIGN | TPM_RIGHTBUTTON, point1.x, point1.y, this);
+        theApp.UpdatePluginMenu(&theApp.m_taskbar_menu_plugin_sub_menu,plugin,2);
     }
-    else
+    catch (CException* exception) { exception->Delete(); }
+    catch (...) { CCommon::WriteLog("Plugin context menu callback failed.",theApp.m_log_path.c_str()); }
+    if (!::IsWindow(source_hwnd)) return;
+    CPoint cursor;
+    GetCursorPos(&cursor);
+    UINT command{};
     {
-        //菜单未加载时没有菜单循环可复位状态。
-        m_menu_popuped = false;
+        CFlagLocker tracking(theApp.m_tray_plugin_menu_active);
+        command=menu->TrackPopupMenu(TPM_LEFTALIGN | TPM_RIGHTBUTTON | TPM_RETURNCMD,
+            cursor.x,cursor.y,this);
     }
-    CDialogEx::OnRButtonUp(nFlags, point1);
+    if (!::IsWindow(source_hwnd)) return;
+    m_menu_popuped=false;
+    if (command==0)
+        return;
+    if ((command>=ID_PLUGIN_COMMAND_START && command<=ID_PLUGIN_COMMAND_MAX)
+        || (command>=ID_SHOW_PLUGIN_ITEM_START && command<=ID_SHOW_PLUGIN_ITEM_MAX))
+        ::PostMessage(source_hwnd,WM_COMMAND,command,0);
+    else if (theApp.m_pMainWnd != nullptr && ::IsWindow(theApp.m_pMainWnd->GetSafeHwnd()))
+        ::PostMessage(theApp.m_pMainWnd->GetSafeHwnd(),WM_COMMAND,command,0);
+    //菜单循环已退出。使用异步命令，不让模态设置/主题重建删除当前回调栈的窗口。
 }
 
 
@@ -1615,6 +1664,13 @@ void CTaskBarDlg::OnLButtonDblClk(UINT nFlags, CPoint point)
 
 void CTaskBarDlg::OnTimer(UINT_PTR nIDEvent)
 {
+    if (nIDEvent == TASKBAR_RENDER_RETRY_TIMER)
+    {
+        KillTimer(TASKBAR_RENDER_RETRY_TIMER);
+        m_render_retry_pending = false;
+        Invalidate(FALSE);
+        return;
+    }
     // TODO: 在此添加消息处理程序代码和/或调用默认值
     if (nIDEvent == TASKBAR_TIMER)
     {
@@ -1709,8 +1765,21 @@ BOOL CTaskBarDlg::OnCommand(WPARAM wParam, LPARAM lParam)
     return CDialogEx::OnCommand(wParam, lParam);
 }
 
+BOOL CTaskBarDlg::OnEraseBkgnd(CDC* pDC)
+{
+    //OnPaint 使用自己的缓冲区整幅绘制；让 MFC 先擦除会提交白/黑中间帧。
+    (void)pDC;
+    return TRUE;
+}
+
 void CTaskBarDlg::OnPaint()
 {
+    if (m_in_paint)
+    {
+        CPaintDC nested_dc(this);
+        return;
+    }
+    CFlagLocker paint_lock(m_in_paint);
     CPaintDC dc(this); // device context for painting
                        // TODO: 在此处添加消息处理程序代码
                        // 不为绘图消息调用 CDialogEx::OnPaint()
@@ -1762,7 +1831,43 @@ void CTaskBarDlg::OnPaint()
         DrawCommonHelper::DefaultD2DDrawCommonExceptionHandler::IncreaseErrorCountManually();
         DrawCommonHelper::DefaultD2DDrawCommonExceptionHandler::HandleErrorCountIncrement();
     }
+    catch (CException* exception)
+    {
+        exception->Delete();
+        DrawCommonHelper::MarkFrameSubmitFailed(E_FAIL);
+        CCommon::WriteLog("MFC plugin paint callback failed.", theApp.m_log_path.c_str());
+    }
+    catch (...)
+    {
+        DrawCommonHelper::MarkFrameSubmitFailed(E_FAIL);
+        CCommon::WriteLog("Plugin paint callback failed; preserving the previous frame.", theApp.m_log_path.c_str());
+    }
 
+    const auto frame_result = DrawCommonHelper::FinishFrameSubmit();
+    if (frame_result.active && !frame_result.succeeded)
+    {
+        if (m_consecutive_frame_failures < 7)
+            ++m_consecutive_frame_failures;
+        if (m_consecutive_frame_failures == 3
+            && m_supported_render_enums.GetAutoFitEnum() != DrawCommonHelper::RenderType::DEFAULT)
+        {
+            theApp.m_taskbar_data.disable_d2d = true;
+            CCommon::WriteLog(L"Repeated frame submission failure; requesting a GDI window rebuild.", theApp.m_log_path.c_str());
+            if (theApp.m_pMainWnd != nullptr && ::IsWindow(theApp.m_pMainWnd->GetSafeHwnd()))
+                ::PostMessage(theApp.m_pMainWnd->GetSafeHwnd(), WM_REOPEN_TASKBAR_WND,
+                    reinterpret_cast<WPARAM>(GetSafeHwnd()), 0);
+        }
+        const unsigned int delay = DrawCommonHelper::FrameRetryDelay(m_consecutive_frame_failures);
+        if (delay != 0 && !m_render_retry_pending)
+            m_render_retry_pending = SetTimer(TASKBAR_RENDER_RETRY_TIMER, delay, nullptr) != 0;
+    }
+    else if (frame_result.succeeded)
+    {
+        m_consecutive_frame_failures = 0;
+        if (m_render_retry_pending)
+            KillTimer(TASKBAR_RENDER_RETRY_TIMER);
+        m_render_retry_pending = false;
+    }
 }
 
 void CTaskBarDlg::AddHisToList(CommonDisplayItem item_type, int current_usage_percent)
@@ -1851,9 +1956,13 @@ void CTaskBarDlg::OnClose()
     CSpeedGraphTip::Instance().ForceHide();
     m_graph_tip_showing = false;
 
-    ::SendMessage(theApp.m_pMainWnd->GetSafeHwnd(), WM_TASKBAR_WND_CLOSED, 0, 0);
-
+    const HWND main_hwnd = theApp.m_pMainWnd != nullptr ? theApp.m_pMainWnd->GetSafeHwnd() : nullptr;
+    const UINT_PTR instance_token = GetInstanceToken();
     CDialogEx::OnClose();
+    //在 HWND 已销毁后再通知宿主，宿主可安全清理 m_tBarDlg，不会在本窗口
+    //OnClose 调用栈内删除 this。
+    if (::IsWindow(main_hwnd))
+        ::PostMessage(main_hwnd, WM_TASKBAR_WND_CLOSED, instance_token, 0);
 }
 
 void CTaskBarDlg::OnLButtonUp(UINT nFlags, CPoint point)

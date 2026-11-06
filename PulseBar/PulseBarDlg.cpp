@@ -24,6 +24,8 @@
 
 #include "PluginInfoDlg.h"
 
+#include "FilePathHelper.h"
+
 #include "WIC.h"
 
 #include "SupportedRenderEnums.h"
@@ -218,7 +220,7 @@ BEGIN_MESSAGE_MAP(CPulseBarDlg, CDialog)
     ON_MESSAGE(WM_TABLET_QUERYSYSTEMGESTURESTATUS, &CPulseBarDlg::OnTabletQuerysystemgesturestatus)
     ON_COMMAND(ID_PLUGIN_OPTIONS_TASKBAR, &CPulseBarDlg::OnPluginOptionsTaksbar)
     ON_COMMAND(ID_PLUGIN_DETAIL_TASKBAR, &CPulseBarDlg::OnPluginDetailTaksbar)
-    //托盘“插件”子菜单的命令按固定区间路由到插件索引，不经过任务栏点击状态。
+    //托盘插件动态命令通过独立 registry 路由，不经过任务栏点击状态。
     ON_COMMAND_RANGE(ID_PLUGIN_TRAY_START, ID_PLUGIN_TRAY_MAX, &CPulseBarDlg::OnPluginTrayCommand)
     ON_WM_POWERBROADCAST()
     ON_WM_DWMCOLORIZATIONCOLORCHANGED()
@@ -647,7 +649,17 @@ void CPulseBarDlg::IniConnectionMenu(CMenu* pMenu)
         }
         else
         {
-            //兼容没有固定“连接详情”的旧菜单资源，只清理动态命令范围。
+            //兼容没有固定“连接详情”的旧菜单资源，只清理动态命令范围，
+            //但保留资源中的分隔线，并把新项目插到分隔线之后。
+            int separator_pos = -1;
+            for (int index = select_all_pos + 1; index < pMenu->GetMenuItemCount(); ++index)
+            {
+                if (pMenu->GetMenuItemID(index) == 0)
+                {
+                    separator_pos = index;
+                    break;
+                }
+            }
             for (int index = pMenu->GetMenuItemCount() - 1; index > select_all_pos; --index)
             {
                 UINT command_id = pMenu->GetMenuItemID(index);
@@ -655,7 +667,7 @@ void CPulseBarDlg::IniConnectionMenu(CMenu* pMenu)
                     || command_id == ID_REFRESH_CONNECTION_LIST)
                     pMenu->DeleteMenu(index, MF_BYPOSITION);
             }
-            dynamic_start = select_all_pos + 1;
+            dynamic_start = separator_pos >= 0 ? separator_pos + 1 : select_all_pos + 1;
         }
 
         CString connection_descr;
@@ -730,35 +742,65 @@ void CPulseBarDlg::InsertDynamicMenuItems()
 
 
 void CPulseBarDlg::SetConnectionMenuState(CMenu* pMenu)
-
 {
+    if (pMenu == nullptr)
+        return;
 
     CSingleLock connection_lock(&m_connection_lock, TRUE);
+    auto find_position = [pMenu](UINT command_id)
+    {
+        for (int index = 0; index < pMenu->GetMenuItemCount(); ++index)
+        {
+            if (pMenu->GetMenuItemID(index) == command_id)
+                return index;
+        }
+        return -1;
+    };
+
+    const int auto_pos = find_position(ID_SELETE_CONNECTION);
+    const int select_all_pos = find_position(ID_SELECT_ALL_CONNECTION);
+    if (auto_pos < 0 || select_all_pos < 0)
+        return;
+
+    const int first_pos = min(auto_pos, select_all_pos);
+    int last_pos = max(auto_pos, select_all_pos);
+    for (int index = 0; index < pMenu->GetMenuItemCount(); ++index)
+    {
+        const UINT command_id = pMenu->GetMenuItemID(index);
+        if (command_id > ID_SELECT_ALL_CONNECTION &&
+            command_id <= ID_SELECT_ALL_CONNECTION + m_connections.size())
+        {
+            last_pos = max(last_pos, index);
+        }
+    }
+
+    int selected_pos = auto_pos;
+    UINT selected_command = ID_SELETE_CONNECTION;
     if (theApp.m_cfg_data.m_select_all)
+    {
+        selected_pos = select_all_pos;
+        selected_command = ID_SELECT_ALL_CONNECTION;
+    }
+    else if (!theApp.m_cfg_data.m_auto_select)
+    {
+        selected_command = ID_SELECT_ALL_CONNECTION + m_connection_selected + 1;
+        selected_pos = find_position(selected_command);
+        //动态项位于资源分隔线之后；找不到时回退到“自动选择”，绝不能选到分隔线。
+        if (selected_pos < 0)
+        {
+            selected_pos = auto_pos;
+            selected_command = ID_SELETE_CONNECTION;
+        }
+    }
 
-        pMenu->CheckMenuRadioItem(0, m_connections.size() + 1, 1, MF_BYPOSITION | MF_CHECKED);
-
-    else if (theApp.m_cfg_data.m_auto_select)       //m_auto_select为true时为自动选择，选中菜单的第1项
-
-        pMenu->CheckMenuRadioItem(0, m_connections.size() + 1, 0, MF_BYPOSITION | MF_CHECKED);
-
-    else        //m_auto_select为false时非自动选择，根据m_connection_selected的值选择对应的项
-
-        pMenu->CheckMenuRadioItem(0, m_connections.size() + 1, m_connection_selected + 2, MF_BYPOSITION | MF_CHECKED);
-
-
-
-    //没有设置为“选择全部”时，将当前选择项设置为默认菜单项（加粗显示）
-
-    if (!theApp.m_cfg_data.m_select_all)
-
-        pMenu->SetDefaultItem(m_connection_selected + 2, TRUE);
-
+    pMenu->CheckMenuRadioItem(first_pos, last_pos, selected_pos,
+        MF_BYPOSITION | MF_CHECKED);
+    if (theApp.m_cfg_data.m_select_all)
+        pMenu->SetDefaultItem(static_cast<UINT>(-1), TRUE);
     else
-
-        pMenu->SetDefaultItem(-1, TRUE);
-
+        pMenu->SetDefaultItem(selected_command, FALSE);
 }
+
 
 
 
@@ -794,6 +836,22 @@ void CPulseBarDlg::OpenTaskBarWnd()
 
 {
 
+    if (m_tBarDlg != nullptr)
+
+    {
+
+        if (IsTaskbarWndValid())
+
+            return;
+
+        delete m_tBarDlg;
+
+        m_tBarDlg = nullptr;
+
+    }
+
+    theApp.m_taskbar_data.update_layered_window_error_code = 0;
+
     // 强制初始化theApp.m_is_windows11_taskbar的值
 
     theApp.CheckWindows11Taskbar();
@@ -824,6 +882,7 @@ void CPulseBarDlg::OpenTaskBarWnd()
 
     // 但是WS_EX_NOREDIRECTIONBITMAP似乎会导致UpdateLayeredWindowIndirect失败
 
+    BOOL created = FALSE;
     switch (render_type)
 
     {
@@ -832,7 +891,7 @@ void CPulseBarDlg::OpenTaskBarWnd()
 
     case RenderType::D2D1_WITH_DCOMPOSITION:
 
-        m_tBarDlg->Create(IDD_TASK_BAR_DIALOG_NOREDIRECTIONBITMAP, this);
+        created = m_tBarDlg->Create(IDD_TASK_BAR_DIALOG_NOREDIRECTIONBITMAP, this);
 
         break;
 
@@ -840,9 +899,21 @@ void CPulseBarDlg::OpenTaskBarWnd()
 
     default:
 
-        m_tBarDlg->Create(IDD_TASK_BAR_DIALOG, this);
+        created = m_tBarDlg->Create(IDD_TASK_BAR_DIALOG, this);
 
         break;
+
+    }
+
+    if (!created || !::IsWindow(m_tBarDlg->GetSafeHwnd()) || !m_tBarDlg->IsReadyToShow())
+
+    {
+
+        if (::IsWindow(m_tBarDlg->GetSafeHwnd()))
+            m_tBarDlg->DestroyWindow();
+        delete m_tBarDlg;
+        m_tBarDlg = nullptr;
+        return;
 
     }
 
@@ -1220,36 +1291,21 @@ void CPulseBarDlg::ApplySettings(COptionsDlg& optionsDlg)
     //CTaskBarDlg::SaveConfig();
 
     if (IsTaskbarWndValid())
-
     {
-
-        m_tBarDlg->ApplySettings();
-
-        //如果更改了任务栏窗口字体或显示的文本，则任务栏窗口可能要变化，于是关闭再打开任务栏窗口
-
-        if (taskbar_changed)
-
+        if (taskbar_changed || m_tBarDlg->NeedsWindowRecreation())
         {
-
             CloseTaskBarWnd();
-
             OpenTaskBarWnd();
-
         }
-
         else
-
         {
-
+            m_tBarDlg->ApplySettings();
             m_tBarDlg->WidthChanged();
-
         }
-
-        m_tBarDlg->ApplyWindowTransparentColor();
-
+        //Create/渲染器初始化失败时 m_tBarDlg 已清空，不能再解引用。
+        if (IsTaskbarWndValid())
+            m_tBarDlg->ApplyWindowTransparentColor();
     }
-
-
 
     if (optionsDlg.m_tab3_dlg.IsAutoRunModified())
 
@@ -2920,9 +2976,8 @@ void CPulseBarDlg::OnClose()
 
 
 
-    if (IsTaskbarWndValid())
-
-        m_tBarDlg->OnCancel();
+    //系统关闭必须走统一释放路径，不能留下指向已销毁 HWND 的 m_tBarDlg。
+    CloseTaskBarWnd();
 
 
 
@@ -3060,122 +3115,50 @@ BOOL CPulseBarDlg::PreTranslateMessage(MSG* pMsg)
 
 
 afx_msg LRESULT CPulseBarDlg::OnNotifyIcon(WPARAM wParam, LPARAM lParam)
-
 {
-
-    bool dialog_exist{ false };
-
-    HWND handle{};
-
-    if (lParam == WM_LBUTTONDOWN || lParam == WM_RBUTTONUP || lParam == WM_LBUTTONDBLCLK)
-
+    if (lParam!=WM_LBUTTONDOWN && lParam!=WM_RBUTTONUP && lParam!=WM_LBUTTONDBLCLK)
+        return 0;
+    const HWND owner=theApp.GetDialogOwner(GetSafeHwnd());
+    const bool dialog_exist=owner!=GetSafeHwnd();
+    if (lParam==WM_LBUTTONDOWN || lParam==WM_LBUTTONDBLCLK)
     {
-
-        for (const auto& item : CBaseDialog::AllUniqueHandels())
-
-        {
-
-            if (IsWindow(item.second))
-
-            {
-
-                dialog_exist = true;
-
-                handle = item.second;
-
-                break;
-
-            }
-
-        }
-
-    }
-
-
-
-    if (lParam == WM_LBUTTONDOWN || lParam == WM_LBUTTONDBLCLK)
-
-    {
-
-        //主窗口已移除：有对话框打开时切换焦点，否则打开选项设置
-
         if (dialog_exist)
-
-            ::SetForegroundWindow(handle);
-
+            ::SetForegroundWindow(owner);
         else
-
-            _OnOptions(0, this);
-
+            _OnOptions(0,this);
+        return 0;
     }
-
-
-
-    if (lParam == WM_RBUTTONUP)
-
+    CSpeedGraphTip::Instance().ForceHide();
+    if (IsTaskbarWndValid())
     {
-
-        //有设置对话框打开时也要弹出托盘菜单，否则用户无法从这里退出程序。
-        //菜单以打开的对话框作为 owner（模态循环期间宿主窗口被禁用），
-        //选中的命令再转发给宿主窗口执行。
-        HWND menu_owner = dialog_exist ? handle : m_hWnd;
-
-        if (dialog_exist)
-
-            ::SetForegroundWindow(handle);
-
-        else if (IsTaskbarWndValid())
-
-            m_tBarDlg->SetForegroundWindow();
-
-        else
-
-            SetForegroundWindow();
-
-        CPoint point1;
-
-        GetCursorPos(&point1);
-
-        OnTaskbarMenuPopedUp(0, 0);      //先刷新菜单的勾选状态
-
-        theApp.m_taskbar_menu.GetSubMenu(0)->SetDefaultItem(-1);
-
-        UINT cmd = theApp.m_taskbar_menu.GetSubMenu(0)->TrackPopupMenu(
-            TPM_LEFTALIGN | TPM_RIGHTBUTTON | TPM_RETURNCMD, point1.x, point1.y,
-            CWnd::FromHandle(menu_owner));
-
-        if (cmd != 0)
-
-        {
-
-            if (cmd == ID_APP_EXIT && dialog_exist)
-
-            {
-
-                //先关闭模态的设置窗口；退出命令异步派发，等本消息处理完、
-                //模态循环真正退出后再执行，避免在模态循环内部销毁窗口。
-                ::SendMessage(handle, WM_CLOSE, 0, 0);
-
-                ::PostMessage(theApp.m_pMainWnd->GetSafeHwnd(), WM_COMMAND, cmd, 0);
-
-            }
-
-            else
-
-            {
-
-                ::SendMessage(theApp.m_pMainWnd->GetSafeHwnd(), WM_COMMAND, cmd, 0);
-
-            }
-
-        }
-
+        m_tBarDlg->HideSpeedGraphTip();
+        m_tBarDlg->m_tool_tips.Pop();
     }
-
-
-
+    theApp.UpdateTrayPluginMenu(); //进入菜单循环前才允许改变结构。
+    OnTaskbarMenuPopedUp(0,0);
+    CMenu* menu=theApp.m_taskbar_menu.GetSubMenu(0);
+    if (menu==nullptr)
+        return 0;
+    ::SetForegroundWindow(owner);
+    CPoint point;
+    GetCursorPos(&point);
+    menu->SetDefaultItem(-1);
+    UINT command{};
+    {
+        CFlagLocker tracking(theApp.m_tray_plugin_menu_active);
+        command=menu->TrackPopupMenu(TPM_LEFTALIGN | TPM_RIGHTBUTTON | TPM_RETURNCMD,
+            point.x,point.y,CWnd::FromHandle(owner));
+    }
+    if (command==0)
+        return 0;
+    if (command==ID_APP_EXIT && dialog_exist)
+    {
+        ::SendMessage(owner,WM_CLOSE,0,0);
+        ::PostMessage(GetSafeHwnd(),WM_COMMAND,command,0);
+    }
+    else
+        ::SendMessage(GetSafeHwnd(),WM_COMMAND,command,0);
     return 0;
-
 }
 
 
@@ -3235,25 +3218,22 @@ void CPulseBarDlg::OnShowSpeedGraphTip()
 //==================== 任务栏窗口主题(经典/圆角面板/渐变色条/背景图) ====================
 
 void CPulseBarDlg::ApplyTaskbarTheme()
-
 {
-
     theApp.SaveConfig();
-
-    if (IsTaskbarWndValid())
-
+    if (!IsTaskbarWndValid())
+        return;
+    if (m_tBarDlg->NeedsWindowRecreation())
     {
-
-        //重新创建字体并重算布局:主题的数值加粗、面板样式切换后即时生效
-
-        m_tBarDlg->ApplySettings();
-
-        m_tBarDlg->ApplyWindowTransparentColor();
-
-        m_tBarDlg->Invalidate(FALSE);
-
+        CloseTaskBarWnd();
+        OpenTaskBarWnd();
     }
-
+    else
+        m_tBarDlg->ApplySettings();
+    if (IsTaskbarWndValid())
+    {
+        m_tBarDlg->ApplyWindowTransparentColor();
+        m_tBarDlg->Invalidate(FALSE);
+    }
 }
 
 
@@ -3703,6 +3683,16 @@ afx_msg LRESULT CPulseBarDlg::OnDpichanged(WPARAM wParam, LPARAM lParam)
 afx_msg LRESULT CPulseBarDlg::OnTaskbarWndClosed(WPARAM wParam, LPARAM lParam)
 
 {
+    if (m_tBarDlg == nullptr || wParam != m_tBarDlg->GetInstanceToken())
+        return 0;
+
+
+    if (m_tBarDlg != nullptr && !::IsWindow(m_tBarDlg->GetSafeHwnd()))
+    {
+        delete m_tBarDlg;
+        m_tBarDlg = nullptr;
+        theApp.m_taskbar_data.update_layered_window_error_code = 0;
+    }
 
     theApp.m_cfg_data.m_show_task_bar_wnd = false;
 
@@ -3760,6 +3750,9 @@ void CPulseBarDlg::OnPluginManage()
 LRESULT CPulseBarDlg::OnReopenTaksbarWnd(WPARAM wParam, LPARAM lParam)
 
 {
+    if (wParam != 0 && (!IsTaskbarWndValid() || reinterpret_cast<HWND>(wParam) != m_tBarDlg->GetSafeHwnd()))
+        return 0;
+
 
     CloseTaskBarWnd();
 
@@ -3865,31 +3858,69 @@ afx_msg LRESULT CPulseBarDlg::OnTabletQuerysystemgesturestatus(WPARAM wParam, LP
 
 
 
-//托盘“插件”子菜单：命令ID减去区间起点即插件索引，直接打开该插件的选项设置。
-//按索引路由，不读任务栏窗口的点击残留状态，托盘入口与任务栏右键互不影响。
-//托盘“插件”子菜单：命令ID减去区间起点后除以2即插件索引，偶数号打开选项设置、
-//奇数号打开插件详细信息。按索引路由，不读任务栏窗口的点击残留状态，托盘入口
-//与任务栏右键互不影响。
+//托盘插件命令只接受当前重建产生的动态 registry 项，避免把 ID 当作插件
+//vector 下标，也不读取任务栏窗口的点击残留状态。
 void CPulseBarDlg::OnPluginTrayCommand(UINT nID)
 {
-    int index = (static_cast<int>(nID) - ID_PLUGIN_TRAY_START) / 2;
-    const std::vector<CPluginManager::PluginInfo>& plugins = theApp.m_plugins.GetPlugins();
-    if (index < 0 || index >= static_cast<int>(plugins.size()))
+    const auto found=theApp.m_tray_plugin_actions.find(nID);
+    if (found==theApp.m_tray_plugin_actions.end())
         return;
-    const CPluginManager::PluginInfo& plugin_info = plugins[index];
-    if (plugin_info.plugin == nullptr || plugin_info.state != CPluginManager::PluginState::PS_SUCCEED)
+    const TrayPluginAction action=found->second; //回调可重入菜单刷新，不能保留 map 内引用。
+    ITMPlugin* plugin{};
+    int plugin_index=-1;
+    const auto& plugins=theApp.m_plugins.GetPlugins();
+    for (size_t index=0; index<plugins.size(); ++index)
+        if (plugins[index].plugin==action.plugin && plugins[index].file_path==action.file_path
+            && plugins[index].state==CPluginManager::PluginState::PS_SUCCEED)
+        { plugin=action.plugin; plugin_index=static_cast<int>(index); break; }
+    if (plugin==nullptr)
         return;
-    if (nID % 2 == 1)       //奇数号ID：插件详细信息
+    const HWND owner=theApp.GetDialogOwner(GetSafeHwnd());
+    try
     {
-        CPluginInfoDlg dlg(index);
-        dlg.DoModal();
-        return;
+        switch (action.kind)
+        {
+        case TrayPluginActionKind::DETAIL:
+        {
+            CPluginInfoDlg dialog(plugin_index,CWnd::FromHandle(owner));
+            dialog.DoModal();
+            return;
+        }
+        case TrayPluginActionKind::OPTIONS:
+        {
+            const auto result=plugin->ShowOptionsDialog(static_cast<void*>(owner));
+            if (result==ITMPlugin::OR_OPTION_CHANGED && IsTaskbarWndValid())
+                m_tBarDlg->WidthChanged();
+            if (result==ITMPlugin::OR_OPTION_NOT_PROVIDED)
+                MessageBox(CCommon::LoadText(IDS_PLUGIN_NO_OPTIONS_INFO),nullptr,MB_ICONINFORMATION | MB_OK);
+            return;
+        }
+        case TrayPluginActionKind::DISABLE:
+        {
+            const auto name=CFilePathHelper(action.file_path).GetFileName();
+            const bool disabled=theApp.m_cfg_data.plugin_disabled.Contains(name);
+            theApp.m_cfg_data.plugin_disabled.SetStrContained(name,!disabled);
+            MessageBox(CCommon::LoadText(IDS_RESTART_TO_APPLY_CHANGE_INFO),nullptr,MB_ICONINFORMATION | MB_OK);
+            return;
+        }
+        case TrayPluginActionKind::PLUGIN_COMMAND:
+        {
+            const int index=action.plugin_command_index;
+            if (plugin->GetAPIVersion()<5 || index<0 || index>=plugin->GetCommandCount())
+                return;
+            const wchar_t* label=plugin->GetCommandName(index);
+            if (label==nullptr || action.command_label!=label)
+                return; //插件在 popup 后改变了命令语义，不能运行旧索引。
+            plugin->OnPluginCommand(index,static_cast<void*>(owner),nullptr);
+            return;
+        }
+        default:
+            return;
+        }
     }
-    auto rtn = plugin_info.plugin->ShowOptionsDialog(GetSafeHwnd());
-    if (rtn == ITMPlugin::OR_OPTION_CHANGED && IsTaskbarWndValid())      //选项有更改，刷新任务栏宽度
-        m_tBarDlg->WidthChanged();
-    if (rtn == ITMPlugin::OR_OPTION_NOT_PROVIDED)
-        MessageBox(CCommon::LoadText(IDS_PLUGIN_NO_OPTIONS_INFO), nullptr, MB_ICONINFORMATION | MB_OK);
+    catch (CException* exception) { exception->Delete(); }
+    catch (...) {}
+    CCommon::WriteLog("Plugin tray action failed; callback exception contained.",theApp.m_log_path.c_str());
 }
 
 

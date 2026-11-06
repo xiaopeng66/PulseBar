@@ -91,10 +91,29 @@ BEGIN_MESSAGE_MAP(CPluginInfoDlg, CBaseDialog)
     ON_BN_CLICKED(IDC_PREVIOUS_BUTTON, &CPluginInfoDlg::OnBnClickedPreviousButton)
     ON_BN_CLICKED(IDC_NEXT_BUTTON, &CPluginInfoDlg::OnBnClickedNextButton)
     ON_WM_MOUSEWHEEL()
+    ON_WM_SIZE()
 END_MESSAGE_MAP()
 
 
 // CPluginInfoDlg 消息处理程序
+
+void CPluginInfoDlg::ResizeColumns()
+{
+    if (!::IsWindow(m_info_list.GetSafeHwnd()))
+        return;
+    CHeaderCtrl* header = m_info_list.GetHeaderCtrl();
+    if (header == nullptr || header->GetItemCount() < 2)
+        return;
+    CRect rect;
+    m_info_list.GetClientRect(&rect);
+    if (rect.Width() <= 0)
+        return;
+    const int usable = max(2, rect.Width() - theApp.DPI(20) - 1);
+    const int width0 = max(1, usable / 4);
+    const int width1 = max(1, usable - width0);
+    m_info_list.SetColumnWidth(0, width0);
+    m_info_list.SetColumnWidth(1, width1);
+}
 
 
 BOOL CPluginInfoDlg::OnInitDialog()
@@ -106,14 +125,10 @@ BOOL CPluginInfoDlg::OnInitDialog()
     SetIcon(theApp.GetMenuIcon(IDI_PLUGINS), FALSE);		// 设置小图标
 
     //初始化列表控件
-    CRect rect;
-    m_info_list.GetClientRect(rect);
     m_info_list.SetExtendedStyle(LVS_EX_FULLROWSELECT | LVS_EX_LABELTIP);
-    int width0, width1;
-    width0 = rect.Width() / 4;
-    width1 = rect.Width() - width0 - theApp.DPI(20) - 1;
-    m_info_list.InsertColumn(0, CCommon::LoadText(IDS_ITEM), LVCFMT_LEFT, width0);
-    m_info_list.InsertColumn(1, CCommon::LoadText(IDS_VALUE), LVCFMT_LEFT, width1);
+    m_info_list.InsertColumn(0, CCommon::LoadText(IDS_ITEM), LVCFMT_LEFT, 1);
+    m_info_list.InsertColumn(1, CCommon::LoadText(IDS_VALUE), LVCFMT_LEFT, 1);
+    ResizeColumns();
 
     //向列表中插入行
     for (int i = 0; i < RI_MAX; i++)
@@ -231,6 +246,13 @@ BOOL CPluginInfoDlg::OnMouseWheel(UINT nFlags, short zDelta, CPoint pt)
     }
 
     return CBaseDialog::OnMouseWheel(nFlags, zDelta, pt);
+}
+
+void CPluginInfoDlg::OnSize(UINT nType, int cx, int cy)
+{
+    CBaseDialog::OnSize(nType, cx, cy);
+    if (nType != SIZE_MINIMIZED)
+        ResizeColumns();
 }
 
 CString CPluginInfoDlg::GetRowName(int row_index)

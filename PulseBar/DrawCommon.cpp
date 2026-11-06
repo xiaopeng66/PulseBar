@@ -3,6 +3,7 @@
 #include "DrawCommonHelper.h"
 #include "PulseBar.h"
 #include "WindowsSettingHelper.h"
+#include "TaskbarThemeGeometry.h"
 
 CDrawCommon::CDrawCommon()
 {
@@ -197,8 +198,15 @@ void CDrawCommon::DrawThemeBackground(const CRect& rect, int corner_radius)
         return;
     }
 
+    const int width = rect.Width();
+    const int height = rect.Height();
+    if (width <= 0 || height <= 0)
+        return;
+
     Gdiplus::Graphics graphics(m_pDC->GetSafeHdc());
     graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+
+    const int radius = TaskbarThemeGeometry::ResolveCornerRadius(width, height, corner_radius, theme->style == 4);
 
     // ---- A:自定义背景图(缓存路径,尺寸变化拉伸;按圆角/胶囊裁剪) ----
     if (cfg.tb_use_background_image && !cfg.tb_background_image.empty())
@@ -221,42 +229,42 @@ void CDrawCommon::DrawThemeBackground(const CRect& rect, int corner_radius)
         }
         if (cached != nullptr)
         {
-            const int height = rect.Height();
-            int radius = (theme->style == 4) ? height / 2 : corner_radius;
-            if (radius * 2 > height) radius = height / 2;
-            if (radius < 1) radius = 1;
-            Gdiplus::Rect rc(rect.left, rect.top, rect.Width() - 1, height - 1);
-            Gdiplus::GraphicsPath path;
-            path.AddArc(rc.X, rc.Y, radius * 2, radius * 2, 180, 90);
-            path.AddArc(rc.X + rc.Width - radius * 2, rc.Y, radius * 2, radius * 2, 270, 90);
-            path.AddArc(rc.X + rc.Width - radius * 2, rc.Y + rc.Height - radius * 2, radius * 2, radius * 2, 0, 90);
-            path.AddArc(rc.X, rc.Y + rc.Height - radius * 2, radius * 2, radius * 2, 90, 90);
-            path.CloseFigure();
-            graphics.SetClip(&path);
-            Gdiplus::Rect dst(rect.left, rect.top, rect.Width(), rect.Height());
-            graphics.DrawImage(cached, dst, 0, 0, cached->GetWidth(), cached->GetHeight(), Gdiplus::UnitPixel);
-            graphics.ResetClip();
+            Gdiplus::Rect rc(rect.left, rect.top, width, height);
+            Gdiplus::Rect dst(rect.left, rect.top, width, height);
+            if (radius > 0)
+            {
+                Gdiplus::GraphicsPath path;
+                path.AddArc(rc.X, rc.Y, radius * 2, radius * 2, 180, 90);
+                path.AddArc(rc.X + rc.Width - radius * 2, rc.Y, radius * 2, radius * 2, 270, 90);
+                path.AddArc(rc.X + rc.Width - radius * 2, rc.Y + rc.Height - radius * 2, radius * 2, radius * 2, 0, 90);
+                path.AddArc(rc.X, rc.Y + rc.Height - radius * 2, radius * 2, radius * 2, 90, 90);
+                path.CloseFigure();
+                graphics.SetClip(&path);
+                graphics.DrawImage(cached, dst, 0, 0, cached->GetWidth(), cached->GetHeight(), Gdiplus::UnitPixel);
+                graphics.ResetClip();
+            }
+            else
+            {
+                graphics.DrawImage(cached, dst, 0, 0, cached->GetWidth(), cached->GetHeight(), Gdiplus::UnitPixel);
+            }
             return;
         }
     }
 
-    BYTE alpha = (BYTE)(cfg.tb_panel_opacity * 255 / 100);
+    const BYTE alpha = static_cast<BYTE>(TaskbarThemeGeometry::PanelAlphaFromPercent(cfg.tb_panel_opacity));
+    const BYTE accent_alpha = alpha;
+    const BYTE accent_fade_alpha = static_cast<BYTE>(TaskbarThemeGeometry::AccentGradientEndAlpha(alpha));
     Gdiplus::Color c1(alpha, theme->bg_r, theme->bg_g, theme->bg_b);
-    Gdiplus::Color c2(alpha, theme->bg_r, theme->bg_g, theme->bg_b);
-
-    //胶囊:圆角=高度一半;其余用主题圆角
-    int height = rect.Height();
-    int r = (theme->style == 4) ? height / 2 : corner_radius;
-    if (r * 2 > height) r = height / 2;
-    if (r < 1) r = 1;
-
-    Gdiplus::Rect rc(rect.left, rect.top, rect.Width() - 1, height - 1);
+    Gdiplus::Rect rc(rect.left, rect.top, width, height);
     Gdiplus::GraphicsPath path;
-    path.AddArc(rc.X, rc.Y, r * 2, r * 2, 180, 90);
-    path.AddArc(rc.X + rc.Width - r * 2, rc.Y, r * 2, r * 2, 270, 90);
-    path.AddArc(rc.X + rc.Width - r * 2, rc.Y + rc.Height - r * 2, r * 2, r * 2, 0, 90);
-    path.AddArc(rc.X, rc.Y + rc.Height - r * 2, r * 2, r * 2, 90, 90);
-    path.CloseFigure();
+    if (radius > 0)
+    {
+        path.AddArc(rc.X, rc.Y, radius * 2, radius * 2, 180, 90);
+        path.AddArc(rc.X + rc.Width - radius * 2, rc.Y, radius * 2, radius * 2, 270, 90);
+        path.AddArc(rc.X + rc.Width - radius * 2, rc.Y + rc.Height - radius * 2, radius * 2, radius * 2, 0, 90);
+        path.AddArc(rc.X, rc.Y + rc.Height - radius * 2, radius * 2, radius * 2, 90, 90);
+        path.CloseFigure();
+    }
 
     // ---- 面板填充:纯色 / 对角渐变 ----
     if (theme->style == 1)
@@ -267,37 +275,58 @@ void CDrawCommon::DrawThemeBackground(const CRect& rect, int corner_radius)
             (BYTE)((theme->bg_g + GetGValue(theme->accent)) / 2),
             (BYTE)((theme->bg_b + GetBValue(theme->accent)) / 2));
         Gdiplus::LinearGradientBrush lgb(rc, c1, c_end, Gdiplus::LinearGradientModeVertical);
-        graphics.FillPath(&lgb, &path);
+        if (radius > 0)
+            graphics.FillPath(&lgb, &path);
+        else
+            graphics.FillRectangle(&lgb, rc);
     }
     else
     {
         Gdiplus::SolidBrush brush(c1);
-        graphics.FillPath(&brush, &path);
+        if (radius > 0)
+            graphics.FillPath(&brush, &path);
+        else
+            graphics.FillRectangle(&brush, rc);
     }
 
     // ---- 点缀 ----
     if (theme->style == 2)
     {
         //底部渐变点缀条
-        Gdiplus::Rect bar(rect.left + r, rc.Y + rc.Height - 3, rect.Width() - r * 2, 2);
-        Gdiplus::LinearGradientBrush lgb(bar,
-            Gdiplus::Color(255, GetRValue(theme->accent), GetGValue(theme->accent), GetBValue(theme->accent)),
-            Gdiplus::Color(120, GetRValue(theme->accent), GetGValue(theme->accent), GetBValue(theme->accent)),
-            Gdiplus::LinearGradientModeHorizontal);
-        graphics.FillRectangle(&lgb, bar);
+        TaskbarThemeGeometry::AccentBar accent_bar;
+        if (TaskbarThemeGeometry::MakeBottomAccentBar(width, height, radius, 2, 2, accent_bar))
+        {
+            Gdiplus::Rect bar(rect.left + accent_bar.left, rect.top + accent_bar.top,
+                accent_bar.width, accent_bar.height);
+            Gdiplus::LinearGradientBrush lgb(bar,
+                Gdiplus::Color(accent_alpha, GetRValue(theme->accent), GetGValue(theme->accent), GetBValue(theme->accent)),
+                Gdiplus::Color(accent_fade_alpha, GetRValue(theme->accent), GetGValue(theme->accent), GetBValue(theme->accent)),
+                Gdiplus::LinearGradientModeHorizontal);
+            graphics.FillRectangle(&lgb, bar);
+        }
     }
     else if (theme->style == 3)
     {
         //主题色描边
-        Gdiplus::Pen pen(Gdiplus::Color(alpha, GetRValue(theme->accent), GetGValue(theme->accent), GetBValue(theme->accent)), 1.2f);
-        graphics.DrawPath(&pen, &path);
+        Gdiplus::Pen pen(Gdiplus::Color(accent_alpha, GetRValue(theme->accent), GetGValue(theme->accent), GetBValue(theme->accent)), 1.2f);
+        if (radius > 0)
+            graphics.DrawPath(&pen, &path);
+        else
+            graphics.DrawRectangle(&pen, rc);
     }
     else if (theme->style == 4)
     {
         //胶囊左侧竖向点缀条
-        int dpi = GetDeviceCaps(m_pDC->GetSafeHdc(), LOGPIXELSX);
-        Gdiplus::Rect bar(rect.left + 4 * dpi / 96, rect.top + 4 * dpi / 96, 3 * dpi / 96, height - 8 * dpi / 96);
-        Gdiplus::SolidBrush accent(Gdiplus::Color(255, GetRValue(theme->accent), GetGValue(theme->accent), GetBValue(theme->accent)));
-        graphics.FillRectangle(&accent, bar);
+        const int dpi = GetDeviceCaps(m_pDC->GetSafeHdc(), LOGPIXELSX);
+        const int inset = 4 * dpi / 96;
+        const int bar_width = 3 * dpi / 96;
+        TaskbarThemeGeometry::AccentBar accent_bar;
+        if (TaskbarThemeGeometry::MakeLeftAccentBar(width, height, inset, inset, bar_width, accent_bar))
+        {
+            Gdiplus::Rect bar(rect.left + accent_bar.left, rect.top + accent_bar.top,
+                accent_bar.width, accent_bar.height);
+            Gdiplus::SolidBrush accent(Gdiplus::Color(accent_alpha, GetRValue(theme->accent), GetGValue(theme->accent), GetBValue(theme->accent)));
+            graphics.FillRectangle(&accent, bar);
+        }
     }
 }

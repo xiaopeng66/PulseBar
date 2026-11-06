@@ -66,7 +66,7 @@ using namespace std;
 // ---- controlled stubs for the extraction's external dependencies ----
 struct CCommon {
     static bool g_url_ok;
-    static string g_url_body;
+    static thread_local string g_url_body; //每个下载桩有自己的响应，不在测试桩引入另一场数据竞争。
     static bool GetURL(const wstring&, string& result, const wstring& = wstring()) {
         if (!g_url_ok) return false;
         result = g_url_body;
@@ -94,7 +94,7 @@ struct CCommon {
     static char* GetFileContent(const wchar_t*, size_t&) { return nullptr; }
 };
 bool CCommon::g_url_ok = false;
-string CCommon::g_url_body;
+thread_local string CCommon::g_url_body;
 
 struct App {
     struct { int update_source{ 0 }; } m_general_data;
@@ -146,6 +146,15 @@ int wmain(int argc, wchar_t** argv) {
         Check(!helper.CheckForUpdate(), "failed-download-reports-failure");
         Check(helper.GetPluginLatestVersions(L"hardware_monitor.dll").GetVersionString() == "1.5.2",
               "failed-download-keeps-previous-table");
+    } else if (mode == L"malformed-keeps-previous") {
+        CCommon::g_url_ok = true; CCommon::g_url_body = k_xml_two_plugins;
+        helper.CheckForUpdate();
+        for (const char* invalid : {"", "<plugins><plugin", "not XML"}) {
+            CCommon::g_url_body = invalid;
+            Check(!helper.CheckForUpdate(), "malformed-response-reports-failure");
+            Check(helper.GetPluginLatestVersions(L"hardware_monitor.dll").GetVersionString() == "1.5.2",
+                  "malformed-response-preserves-last-successful-table");
+        }
     } else if (mode == L"copy-isolated") {
         CCommon::g_url_ok = true; CCommon::g_url_body = k_xml_two_plugins;
         helper.CheckForUpdate();
@@ -213,7 +222,7 @@ def main():
 
     code = make_code(cpp_text, h_text, helper_text)
     run, env = native.build(code, "plugin-update-helper")
-    cases = ("parse", "failure-keeps-previous", "copy-isolated", "concurrency")
+    cases = ("parse", "failure-keeps-previous", "copy-isolated", "concurrency", "malformed-keeps-previous")
     results = {case: native.execute(run, env, case, timeout=30) for case in cases}
     passed = sum(results.values())
     summary = f"RESULT native {passed}/{len(cases)} cases; contracts {'pass' if not contract_failures else str(contract_failures) + ' problems'}"

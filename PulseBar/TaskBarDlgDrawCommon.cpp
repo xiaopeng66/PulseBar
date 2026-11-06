@@ -1,6 +1,8 @@
 ﻿#include "stdafx.h"
 #include <unordered_map>
+#include <array>
 #include "TaskBarDlgDrawCommon.h"
+#include "DrawCommonHelper.h"
 #include "D2D1Support.h"
 #include "PulseBar.h"
 #include "DrawCommon.h"
@@ -9,6 +11,106 @@
 #undef min
 
 using Microsoft::WRL::ComPtr;
+
+namespace DrawCommonHelper
+{
+    namespace
+    {
+        struct FrameSubmitState
+        {
+            bool active{false};
+            bool submitted{false};
+            bool failed{false};
+            HRESULT failure_hr{S_OK};
+        };
+
+        //绘制回调可能重入消息循环；内层帧不能清空外层提交状态。
+        thread_local std::array<FrameSubmitState, 32> g_frame_submit_states{};
+        thread_local unsigned int g_frame_depth{};
+        thread_local unsigned int g_frame_overflow{};
+    }
+
+    unsigned int FrameRetryDelay(unsigned int consecutive_failures) noexcept
+    {
+        if (consecutive_failures == 0 || consecutive_failures > 6)
+            return 0;
+        const unsigned int shift = consecutive_failures > 5 ? 4 : consecutive_failures - 1;
+        return 100U << shift;
+    }
+
+    void BeginFrameSubmit() noexcept
+    {
+        if (g_frame_depth == g_frame_submit_states.size())
+        {
+            ++g_frame_overflow;
+            MarkFrameSubmitFailed(E_UNEXPECTED);
+            return;
+        }
+        auto& frame = g_frame_submit_states[g_frame_depth++];
+        frame = {};
+        frame.active = true;
+    }
+
+    void MarkFrameSubmitFailed(const HRESULT hr) noexcept
+    {
+        if (g_frame_depth == 0)
+            return;
+        auto& frame = g_frame_submit_states[g_frame_depth - 1];
+        frame.failed = true;
+        if (frame.failure_hr == S_OK)
+            frame.failure_hr = hr;
+    }
+
+    bool IsFrameSubmitFailed() noexcept
+    {
+        return g_frame_overflow != 0 || (g_frame_depth != 0 && g_frame_submit_states[g_frame_depth - 1].failed);
+    }
+
+    void MarkFrameSubmitSucceeded() noexcept
+    {
+        if (g_frame_depth != 0 && !IsFrameSubmitFailed())
+            g_frame_submit_states[g_frame_depth - 1].submitted = true;
+    }
+
+    FrameSubmitResult FinishFrameSubmit() noexcept
+    {
+        if (g_frame_overflow != 0)
+        {
+            --g_frame_overflow;
+            return { true, false, E_UNEXPECTED };
+        }
+        if (g_frame_depth == 0)
+            return {};
+        auto& frame = g_frame_submit_states[--g_frame_depth];
+        FrameSubmitResult result{ frame.active, frame.submitted && !frame.failed, frame.failure_hr };
+        frame = {};
+        return result;
+    }
+}
+
+namespace
+{
+    template <class Func>
+    void RequestDeviceRecreateNoThrow(Func&& request) noexcept
+    {
+        try
+        {
+            request();
+        }
+        catch (CHResultException& ex)
+        {
+            LogHResultException(ex);
+        }
+        catch (const std::exception& ex)
+        {
+            CCommon::WriteLog(ex.what(), theApp.m_log_path.c_str());
+        }
+        catch (...)
+        {
+            CCommon::WriteLog("Unknown device recreation failure.", theApp.m_log_path.c_str());
+        }
+    }
+}
 
 // 其实可以把Verify方法作为构造函数
 template <class T, T FAILED_VALUE>
@@ -870,11 +972,11 @@ auto CD2D1DeviceContextWindowSupport::CDCompositionHelper::Resize(const D2D1_SIZ
     return result;
 }
 
-void CD2D1DeviceContextWindowSupport::CDCompositionHelper::Present()
+bool CD2D1DeviceContextWindowSupport::CDCompositionHelper::Present()
 {
     if (m_need_recreate_d3d10_device1 || m_need_recreate_dcomposition_device)
     {
-        return;
+        return false;
     }
     ThrowIfFailed<CDxgiException>(
         m_p_swap_chain1->Present(1, 0),
@@ -882,6 +984,7 @@ void CD2D1DeviceContextWindowSupport::CDCompositionHelper::Present()
     ThrowIfFailed<CDCompositionException>(
         m_p_composition_device->Commit(),
         TRAFFICMONITOR_ERROR_STR("Commit dcomposition draw call failed."));
+    return true;
 }
 
 auto CD2D1DeviceContextWindowSupport::CDCompositionHelper::GetD3D10Device1()
@@ -1071,11 +1174,11 @@ auto CD2D1DeviceContextWindowSupport::Resize(const D2D1_SIZE_U size)
     return m_d2d1_device_context_helper.GetDeviceContext();
 }
 
-void CD2D1DeviceContextWindowSupport::PresentWhenUseDComposition()
+bool CD2D1DeviceContextWindowSupport::PresentWhenUseDComposition()
 {
-    Dispatch({{DrawCommonHelper::RenderType::D2D1_WITH_DCOMPOSITION,
-               [this]()
-               { GetNullableDCompositionHelper().GetUnsafe().Present(); }}});
+    if (m_render_type != DrawCommonHelper::RenderType::D2D1_WITH_DCOMPOSITION)
+        return true;
+    return GetNullableDCompositionHelper().GetUnsafe().Present();
 }
 
 auto CD2D1DeviceContextWindowSupport::GetRenderTargetSurfaceWhenUseDefault()
@@ -1406,6 +1509,7 @@ void CTaskBarDlgDrawCommon::ResetClippedStateIfSet()
     if (m_is_clipped)
     {
         m_p_device_context->PopAxisAlignedClip();
+        m_is_clipped=false;
     }
 }
 
@@ -1425,6 +1529,7 @@ void CTaskBarDlgDrawCommon::Create(
     m_p_device_context = m_p_d2d1_device_context_support->Resize(size);
 
     m_p_device_context->BeginDraw();
+    m_draw_started = true;
     m_p_device_context->SetTransform(D2D1::Matrix3x2F::Identity());
     m_p_device_context->Clear(transparent_black);
 
@@ -1499,8 +1604,8 @@ auto CTaskBarDlgDrawCommon::Convert(CRect rect) noexcept
 
 CTaskBarDlgDrawCommon::~CTaskBarDlgDrawCommon()
 {
-    // Create的时候抛异常了
-    if (!m_p_window_support)
+    //Create 可能在 Resize 或 BeginDraw 前失败，不能对空 context 调 EndDraw。
+    if (!m_draw_started || !m_p_device_context)
     {
         return;
     }
@@ -1543,14 +1648,59 @@ CTaskBarDlgDrawCommon::~CTaskBarDlgDrawCommon()
                 TRAFFICMONITOR_ERROR_STR("Create ID2D1Bitmap from IDXGISurface1 failed."));
             m_p_device_context->DrawBitmap(p_gdi_interop_bitmap.Get());
         }
-        // ! 注意：保证正常时EndDraw在不起用插件时仍然可以被调用，否则会导致D2D Begin/End调用不匹配，已经是第二次出错了。
-        ThrowIfFailed<CD2D1Exception>(
-            m_p_device_context->EndDraw(),
-            TRAFFICMONITOR_ERROR_STR("Call ID2D1RenderTarget::EndDraw() failed."));
+        //EndDraw 放在异常处理之后：interop 失败也必须配平 BeginDraw。
+    }
+    catch (CD3D10Exception1& ex)
+    {
+        LogHResultException(ex);
+        DrawCommonHelper::MarkFrameSubmitFailed(ex.GetHResult());
+        RequestDeviceRecreateNoThrow([this]()
+        { m_p_d2d1_device_context_support->RequestD3D10Device1Recreate(); });
+    }
+    catch (CD2D1Exception& ex)
+    {
+        LogHResultException(ex);
+        DrawCommonHelper::MarkFrameSubmitFailed(ex.GetHResult());
+        RequestDeviceRecreateNoThrow([this, &ex]()
+        { m_p_d2d1_device_context_support->RequestD2D1DeviceRecreate(ex.GetHResult()); });
+    }
+    catch (CDCompositionException& ex)
+    {
+        LogHResultException(ex);
+        DrawCommonHelper::MarkFrameSubmitFailed(ex.GetHResult());
+        RequestDeviceRecreateNoThrow([this, &ex]()
+        { m_p_d2d1_device_context_support->RequestDCompositionDeviceRecreate(ex.GetHResult()); });
+    }
+    catch (CDxgiException& ex)
+    {
+        LogHResultException(ex);
+        DrawCommonHelper::MarkFrameSubmitFailed(ex.GetHResult());
+        RequestDeviceRecreateNoThrow([this]()
+        { m_p_d2d1_device_context_support->RequestD3D10Device1Recreate(); });
     }
     catch (CHResultException& ex)
     {
         LogHResultException(ex);
+        DrawCommonHelper::MarkFrameSubmitFailed(ex.GetHResult());
+    }
+    catch (const std::exception& ex)
+    {
+        DrawCommonHelper::MarkFrameSubmitFailed(E_FAIL);
+        CCommon::WriteLog(ex.what(), theApp.m_log_path.c_str());
+    }
+    catch (...)
+    {
+        DrawCommonHelper::MarkFrameSubmitFailed(E_FAIL);
+        CCommon::WriteLog("Unknown interop frame failure.", theApp.m_log_path.c_str());
+    }
+    const HRESULT end_result = m_p_device_context->EndDraw();
+    m_draw_started = false;
+    if (FAILED(end_result))
+    {
+        DrawCommonHelper::MarkFrameSubmitFailed(end_result);
+        RequestDeviceRecreateNoThrow([this, end_result]()
+        { m_p_d2d1_device_context_support->RequestD2D1DeviceRecreate(end_result); });
+        CCommon::WriteLog("EndDraw failed; preserving the previous frame.", theApp.m_log_path.c_str());
     }
 }
 
@@ -1712,89 +1862,30 @@ void CTaskBarDlgDrawCommon::SetTextColor(const COLORREF color, BYTE alpha)
 
 void CTaskBarDlgDrawCommon::DrawBitmap(HBITMAP hbitmap, CPoint start_point, CSize size, StretchMode stretch_mode, BYTE alpha)
 {
-    auto p_d2d1_bitmap = m_p_d2d1_device_context_support->GetCachedBitmap(hbitmap);
-    if (!p_d2d1_bitmap)
-    {
-        p_d2d1_bitmap = ResourceBitmapCreator<HBITMAP>::Create(m_p_device_context, hbitmap);
-    }
-
-    float opacity = static_cast<float>(alpha) / 255.f;
-    D2D1_RECT_F draw_rect_f;
-    if (size.cx == 0 || size.cy == 0)
-    {
-        auto bitmap_size = p_d2d1_bitmap->GetSize();
-        draw_rect_f.left = static_cast<float>(start_point.x);
-        draw_rect_f.top = static_cast<float>(start_point.y);
-        draw_rect_f.right = static_cast<float>(start_point.x) + bitmap_size.width;
-        draw_rect_f.bottom = static_cast<float>(start_point.y) + bitmap_size.height;
-        m_p_device_context->DrawBitmap(p_d2d1_bitmap.Get(), draw_rect_f, opacity);
+    if (hbitmap==nullptr || size.cx<0 || size.cy<0)
         return;
-    }
-    switch (stretch_mode)
-    {
-    case StretchMode::STRETCH:
-    {
-        draw_rect_f.left = static_cast<float>(start_point.x);
-        draw_rect_f.top = static_cast<float>(start_point.y);
-        draw_rect_f.right = static_cast<float>(start_point.x + size.cx);
-        draw_rect_f.bottom = static_cast<float>(start_point.y + size.cy);
-        m_p_device_context->DrawBitmap(p_d2d1_bitmap.Get(), draw_rect_f, opacity);
+    auto bitmap=m_p_d2d1_device_context_support->GetCachedBitmap(hbitmap);
+    if (!bitmap)
+        bitmap=ResourceBitmapCreator<HBITMAP>::Create(m_p_device_context,hbitmap);
+    if (!bitmap)
         return;
-    }
-    case StretchMode::FILL:
-    {
-        auto draw_size = size;
-        SetDrawRect(CRect(start_point, draw_size));
-
-        auto bitmap_size = p_d2d1_bitmap->GetPixelSize();
-        float bitmap_aspect_ratio, draw_rect_acpect_ratio; // 图像的宽高比、绘制大小的宽高比
-        bitmap_aspect_ratio = static_cast<float>(bitmap_size.width) / static_cast<float>(bitmap_size.height);
-        draw_rect_acpect_ratio = static_cast<float>(size.cx) / size.cy;
-        if (bitmap_aspect_ratio > draw_rect_acpect_ratio) // 如果图像的宽高比大于绘制区域的宽高比，则需要裁剪两边的图像
-        {
-            int image_width; // 按比例缩放后的宽度
-            image_width = bitmap_size.width * draw_size.cy / bitmap_size.height;
-            start_point.x -= ((image_width - draw_size.cx) / 2);
-            draw_size.cx = image_width;
-        }
-        else
-        {
-            int image_height; // 按比例缩放后的高度
-            image_height = bitmap_size.height * draw_size.cx / bitmap_size.width;
-            start_point.y -= ((image_height - draw_size.cy) / 2);
-            draw_size.cy = image_height;
-        }
-        ResetClippedStateIfSet();
-        break;
-    }
-    case StretchMode::FIT:
-    {
-        auto draw_size = p_d2d1_bitmap->GetPixelSize();
-        // 图像宽高比
-        float bitmap_aspect_ratio = static_cast<float>(draw_size.width) / static_cast<float>(draw_size.height);
-        float draw_rect_acpect_ratio = static_cast<float>(size.cx) / static_cast<float>(size.cy);
-        if (bitmap_aspect_ratio > draw_rect_acpect_ratio) // 如果图像的宽高比大于绘制区域的宽高比
-        {
-            draw_size.height = draw_size.height * size.cx / draw_size.width;
-            draw_size.width = size.cx;
-            start_point.y += ((size.cy - draw_size.height) / 2);
-        }
-        else
-        {
-            draw_size.width = draw_size.width * size.cy / draw_size.height;
-            draw_size.height = size.cy;
-            start_point.x += ((size.cx - draw_size.width) / 2);
-        }
-        break;
-    }
-    default:
-        break;
-    }
-    draw_rect_f.left = static_cast<float>(start_point.x);
-    draw_rect_f.top = static_cast<float>(start_point.y);
-    draw_rect_f.right = draw_rect_f.left + size.cx;
-    draw_rect_f.bottom = draw_rect_f.top + size.cy;
-    m_p_device_context->DrawBitmap(p_d2d1_bitmap.Get(), draw_rect_f, opacity);
+    const auto pixels=bitmap->GetPixelSize();
+    if (pixels.width==0 || pixels.height==0 || pixels.width>0x7FFFFFFFU || pixels.height>0x7FFFFFFFU)
+        return;
+    const bool crop=stretch_mode==StretchMode::FILL && size.cx>0 && size.cy>0;
+    const D2D1_RECT_F target{static_cast<float>(start_point.x),static_cast<float>(start_point.y),
+        static_cast<float>(start_point.x)+size.cx,static_cast<float>(start_point.y)+size.cy};
+    DrawCommonHelper::ImageDrawAreaConvert(CSize(static_cast<int>(pixels.width),static_cast<int>(pixels.height)),
+        start_point,size,stretch_mode);
+    if (size.cx<=0 || size.cy<=0)
+        return;
+    if (crop)
+        m_p_device_context->PushAxisAlignedClip(target,D2D1_ANTIALIAS_MODE_PER_PRIMITIVE);
+    const D2D1_RECT_F destination{static_cast<float>(start_point.x),static_cast<float>(start_point.y),
+        static_cast<float>(start_point.x)+size.cx,static_cast<float>(start_point.y)+size.cy};
+    m_p_device_context->DrawBitmap(bitmap.Get(),destination,static_cast<float>(alpha)/255.f);
+    if (crop)
+        m_p_device_context->PopAxisAlignedClip();
 }
 
 void CTaskBarDlgDrawCommon::DrawIcon(HICON hIcon, CPoint start_point, CSize size)
@@ -1853,6 +1944,12 @@ CTaskBarDlgDrawBuffer::~CTaskBarDlgDrawBuffer()
         return;
     }
 
+    if (DrawCommonHelper::IsFrameSubmitFailed())
+    {
+        //重试统一由窗口按退避策略安排，不在析构中立即失效。
+        return;
+    }
+
     POINT start_location{0, 0};
     HDC gdi_dc{NULL};
     try
@@ -1878,6 +1975,14 @@ CTaskBarDlgDrawBuffer::~CTaskBarDlgDrawBuffer()
         {
             auto error_code = ::GetLastError();
             theApp.m_taskbar_data.update_layered_window_error_code = error_code;
+            DrawCommonHelper::MarkFrameSubmitFailed(HRESULT_FROM_WIN32(error_code));
+            //重试统一由窗口按退避策略安排，不在析构中立即失效。
+            RequestDeviceRecreateNoThrow([this]()
+            { m_ref_window_support.RequestD3D10Device1Recreate(); });
+        }
+        else
+        {
+            DrawCommonHelper::MarkFrameSubmitSucceeded();
         }
         RECT empty_rect{};
         m_p_gdi_surface->ReleaseDC(&empty_rect);
@@ -1886,6 +1991,10 @@ CTaskBarDlgDrawBuffer::~CTaskBarDlgDrawBuffer()
     catch (CD3D10Exception1& ex)
     {
         LogHResultException(ex);
+        DrawCommonHelper::MarkFrameSubmitFailed(ex.GetHResult());
+        RequestDeviceRecreateNoThrow([this]()
+            { m_ref_window_support.RequestD3D10Device1Recreate(); });
+        //重试统一由窗口按退避策略安排，不在析构中立即失效。
     }
 }
 
@@ -1935,9 +2044,11 @@ CTaskBarDlgDrawCommon::CGdiInteropObject::~CGdiInteropObject()
     ::DeleteObject(m_gdi_interop_hbitmap);
 }
 
-CTaskBarDlgDrawBufferUseDComposition::CTaskBarDlgDrawBufferUseDComposition(CD2D1DeviceContextWindowSupport& ref_d2d1_device_context_support)
+CTaskBarDlgDrawBufferUseDComposition::CTaskBarDlgDrawBufferUseDComposition(
+    CD2D1DeviceContextWindowSupport& ref_d2d1_device_context_support,
+    HWND target_hwnd)
+    : m_p_d2d1_device_context_support{&ref_d2d1_device_context_support}, m_target_hwnd{target_hwnd}
 {
-    m_p_d2d1_device_context_support = &ref_d2d1_device_context_support;
 }
 
 CTaskBarDlgDrawBufferUseDComposition::~CTaskBarDlgDrawBufferUseDComposition()
@@ -1946,13 +2057,46 @@ CTaskBarDlgDrawBufferUseDComposition::~CTaskBarDlgDrawBufferUseDComposition()
     {
         return;
     }
+    if (DrawCommonHelper::IsFrameSubmitFailed())
+    {
+        //重试统一由窗口按退避策略安排，不在析构中立即失效。
+        return;
+    }
     try
     {
-        m_p_d2d1_device_context_support->PresentWhenUseDComposition();
-        DrawCommonHelper::DefaultD2DDrawCommonExceptionHandler::ResetErrorCount();
+        if (m_p_d2d1_device_context_support->PresentWhenUseDComposition())
+        {
+            DrawCommonHelper::MarkFrameSubmitSucceeded();
+            DrawCommonHelper::DefaultD2DDrawCommonExceptionHandler::ResetErrorCount();
+        }
+        else
+        {
+            DrawCommonHelper::MarkFrameSubmitFailed(S_FALSE);
+            //重试统一由窗口按退避策略安排，不在析构中立即失效。
+            RequestDeviceRecreateNoThrow([this]()
+                { m_p_d2d1_device_context_support->RequestDCompositionDeviceRecreate(S_FALSE); });
+        }
+    }
+    catch (CDxgiException& ex)
+    {
+        LogHResultException(ex);
+        DrawCommonHelper::MarkFrameSubmitFailed(ex.GetHResult());
+        RequestDeviceRecreateNoThrow([this]()
+        { m_p_d2d1_device_context_support->RequestD3D10Device1Recreate(); });
+        //重试统一由窗口按退避策略安排，不在析构中立即失效。
+    }
+    catch (CDCompositionException& ex)
+    {
+        LogHResultException(ex);
+        DrawCommonHelper::MarkFrameSubmitFailed(ex.GetHResult());
+        RequestDeviceRecreateNoThrow([this, &ex]()
+        { m_p_d2d1_device_context_support->RequestDCompositionDeviceRecreate(ex.GetHResult()); });
+        //重试统一由窗口按退避策略安排，不在析构中立即失效。
     }
     catch (CHResultException& ex)
     {
         LogHResultException(ex);
+        DrawCommonHelper::MarkFrameSubmitFailed(ex.GetHResult());
+        //重试统一由窗口按退避策略安排，不在析构中立即失效。
     }
 }

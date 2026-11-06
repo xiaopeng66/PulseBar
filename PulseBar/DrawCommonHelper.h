@@ -1,5 +1,6 @@
 ﻿#pragma once
 #include "IDrawCommon.h"
+#include <exception>
 
 //用于双缓冲绘图的类
 class CDrawDoubleBuffer final : public IDrawBuffer
@@ -49,7 +50,7 @@ class CDrawDoubleBufferCached final : public IDrawBuffer
 {
 public:
     CDrawDoubleBufferCached(CDC* pDC, CRect rect)
-        : m_pDC(pDC), m_rect(rect)
+        : m_pDC(pDC), m_rect(rect), m_uncaught_on_entry(std::uncaught_exceptions())
     {
         if (m_pDC != nullptr)
         {
@@ -80,7 +81,7 @@ public:
 
     ~CDrawDoubleBufferCached()
     {
-        if (m_pDC != nullptr && m_pCache != nullptr)
+        if (m_pDC != nullptr && m_pCache != nullptr && std::uncaught_exceptions() == m_uncaught_on_entry)
         {
             //把内存图输出到屏幕
             m_pDC->BitBlt(m_rect.left, m_rect.top, m_rect.Width(), m_rect.Height(), m_memDC, 0, 0, SRCCOPY);
@@ -113,6 +114,7 @@ private:
     CDC* m_memDC{};
     Cache* m_pCache{};
     CRect m_rect;
+    int m_uncaught_on_entry{};
 };
 
 namespace DrawCommonHelper

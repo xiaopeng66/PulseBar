@@ -28,26 +28,23 @@ bool CHistoryTrafficListDlg::CalculateColumeWidth(std::vector<int>& widths)
     if (!IsWindow(m_history_list.GetSafeHwnd()))
         return false;
     CRect rect;
-    m_history_list.GetWindowRect(rect);
+    m_history_list.GetClientRect(&rect);
     if (rect.Width() <= 0)
         return false;
     const int MAX_COLUME{ 5 };
-	int width_date;		//“日期”列的宽度
-    int width0;			//“上传”、“下载”、“总流量”列的宽度
-    int width1;			//“图表”列的宽度
-	width_date = rect.Width() * 3 / 11;
-    width0 = rect.Width() * 2 / 11;
-    if (width_date > theApp.DPI(150))
-		width_date = theApp.DPI(150);
-	if (width0 > theApp.DPI(120))
-		width0 = theApp.DPI(120);
-    width1 = rect.Width() - (MAX_COLUME - 2) * width0 - width_date - theApp.DPI(20) - 1;
+    const int usable_width = max(1, rect.Width() - theApp.DPI(20) - 1);
+    int width_date = min(usable_width * 3 / 11, theApp.DPI(150));
+    int width0 = min(usable_width * 2 / 11, theApp.DPI(120));
+    width_date = max(1, width_date);
+    width0 = max(1, width0);
+    const int width1 = max(1, usable_width - width_date - (MAX_COLUME - 2) * width0);
     widths.resize(MAX_COLUME);
-	widths[0] = width_date;
+    widths[0] = width_date;
     widths[1] = widths[2] = widths[3] = width0;
     widths[4] = width1;
     return true;
 }
+
 
 void CHistoryTrafficListDlg::AddListRow(const ListRowData& data, unsigned __int64 max_traffic)
 {
@@ -66,7 +63,9 @@ void CHistoryTrafficListDlg::AddListRow(const ListRowData& data, unsigned __int6
     }
     m_history_list.SetItemText(index, 3, CCommon::KBytesToString(total_kbytes));
 
-    double range = static_cast<double>(total_kbytes) * 1000 / max_traffic;
+    //空历史或全为零流量时没有可比较的最大值，图表范围保持为零而不是除零。
+    double range = max_traffic == 0 ? 0.0
+        : static_cast<double>(total_kbytes) * 1000 / max_traffic;
     COLORREF color;
     if (total_kbytes < 1024 * 1024)		//流量小于1GB时绘制蓝色
         color = TRAFFIC_COLOR_BLUE;
@@ -194,6 +193,14 @@ void CHistoryTrafficListDlg::ShowListData()
             }
         }
 
+        //上面的分组循环只在开始新组时提交前一组，最后一组也必须参与最大值计算。
+        //否则单组/末组为最大流量时 max_traffic 仍为零或偏小。
+        for (const auto& data : list_data)
+        {
+            const unsigned __int64 cur_traffic = data.up_kBytes + data.down_kBytes;
+            if (cur_traffic > max_traffic)
+                max_traffic = cur_traffic;
+        }
         for (const auto& data : list_data)
         {
             AddListRow(data, max_traffic);
@@ -232,7 +239,8 @@ BOOL CHistoryTrafficListDlg::OnInitDialog()
 	//初始化列表控件
 	m_history_list.SetExtendedStyle(LVS_EX_FULLROWSELECT | LVS_EX_LABELTIP);
     std::vector<int> widths;
-    CalculateColumeWidth(widths);
+    if (!CalculateColumeWidth(widths))
+        widths.assign(5, theApp.DPI(40));
     m_history_list.InsertColumn(0, CCommon::LoadText(IDS_DATE), LVCFMT_LEFT, widths[0]);
 	m_history_list.InsertColumn(1, CCommon::LoadText(IDS_UPLOAD), LVCFMT_RIGHT, widths[1]);
 	m_history_list.InsertColumn(2, CCommon::LoadText(IDS_DOWNLOAD), LVCFMT_RIGHT, widths[2]);

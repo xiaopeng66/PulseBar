@@ -28,7 +28,7 @@ protected:
     deque<HistoryTraffic>& m_history_traffics;
 
     CTabCtrl m_tab;
-    int m_tab_selected;
+    int m_tab_selected{ 0 };
 
 protected:
     virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV 支持

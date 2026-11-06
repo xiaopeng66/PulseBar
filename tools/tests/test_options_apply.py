@@ -34,7 +34,7 @@ spec = importlib.util.spec_from_file_location("options_native_support", SUPPORT)
 native = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(native)
 
-MODES = ("owner", "recreate", "unchanged", "cancel_only", "general_cancel",
+MODES = ("owner", "recreate", "recreate-fails", "unchanged", "cancel_only", "general_cancel",
          "unready", "missing_host", "general_uncreated", "null_payload")
 MUTANTS = {
     "owner": ("recreate", "FAIL recreate.options-live-on-apply-return"),
@@ -178,6 +178,7 @@ vector<string> events;
 HWND active_options{};
 int apply_messages{}, cancel_messages{}, taskbar_creates{}, taskbar_deletes{}, stale_accesses{};
 bool in_apply_send{};
+bool fail_taskbar_create{};
 
 // No owner-based auto-cancel policy exists here. Production TaskBarDlg::OnCancel
 // must itself inspect GetParent and send IDCANCEL. Only child-window destruction
@@ -228,6 +229,10 @@ public:
     virtual void OnOK() { modal_result=IDOK; DestroyWindow(); }
     INT_PTR DoModal() { return modal_driver(*this); }
     BOOL Create(UINT, CWnd* owner) {
+        if (token->kind=="taskbar" && fail_taskbar_create) {
+            token->alive=false;
+            return FALSE;
+        }
         token->parent=owner ? owner->token : nullptr; token->alive=true;
         if (token->kind=="taskbar") ++taskbar_creates;
         events.push_back("create:" + token->kind); return TRUE;
@@ -357,6 +362,8 @@ class CTaskBarDlg : public CDialog {
 public:
     CTaskBarDlg(): CDialog(IDD_TASK_BAR_DIALOG) {}
     bool m_graph_tip_showing{}, m_is_width_changed{};
+    bool NeedsWindowRecreation() const { return false; } // Backend capability probe is an external boundary.
+    bool IsReadyToShow() const { return IsWindow(GetSafeHwnd()); }
     void ApplySettings() { RequireWindow(); } // Rendering/layout boundary only.
     void ApplyWindowTransparentColor() { RequireWindow(); }
     static void DisableRenderFeatureIfNecessary(CSupportedRenderEnums&) {}
@@ -504,8 +511,9 @@ void Scenario(COptionsDlg& options, CPulseBarDlg& host, HWND old_taskbar) {
         theApp.m_pMainWnd=&host;
         return;
     }
-    const bool recreate = mode=="recreate";
+    const bool recreate = mode=="recreate" || mode=="recreate-fails";
     if (recreate) options.m_tab2_dlg.m_data.tb_theme=1; // A production rebuild predicate, not a fake callback.
+    fail_taskbar_create = mode=="recreate-fails";
     options.OnBnClickedApplyButton();
     Check(Live(options.token) && Live(page.token) && Live(options.m_tab2_dlg.token), "options-live-on-apply-return");
     Check(options.token->cancels==0 && page.token->cancels==0 && cancel_messages==0 && options.modal_result==0,
@@ -524,7 +532,10 @@ void Scenario(COptionsDlg& options, CPulseBarDlg& host, HWND old_taskbar) {
           Event("save-global") < Event("return-apply"), "host-finishes-before-send-returns");
     Check(page.m_update_source_ori==1, "real-onsettingsapplied-advances-baseline");
     Check(theApp.m_monitor_settings.Read()->version==1, "real-host-publishes-one-commit");
-    if (recreate) {
+    if (mode=="recreate-fails") {
+        Check(host.m_tBarDlg==nullptr && !host.IsTaskbarWndValid() && !old_taskbar->alive && !old_taskbar->object,
+              "failed-taskbar-create-is-cleaned-without-dereferencing-null");
+    } else if (recreate) {
         Check(!old_taskbar->alive && !old_taskbar->object && taskbar_deletes==1 && taskbar_creates==2 &&
               host.IsTaskbarWndValid() && host.m_tBarDlg->GetSafeHwnd()!=old_taskbar,
               "real-host-replaces-taskbar-during-apply");

@@ -20,13 +20,16 @@ auto GetInterfaceFromAllInvolvedDrawCommonObjects(
     {
         if (initializer.first == render_type)
         {
-            initializer.second(p_draw_buffer, p_draw_common);
-
-            UniqueIDrawBuffer up_draw_buffer{p_draw_buffer};
-            ref_object_storage.m_unique_draw_buffer.swap(up_draw_buffer);
-            UniqueIDrawCommon up_draw_common{p_draw_common};
-            ref_object_storage.m_unique_draw_common.swap(up_draw_common);
-            return {p_draw_buffer, p_draw_common};
+            try
+            {
+                initializer.second(p_draw_buffer, p_draw_common);
+            }
+            catch (...)
+            {
+                DrawCommonHelper::MarkFrameSubmitFailed(E_FAIL);
+                throw;
+            }
+            return {ref_object_storage.m_unique_draw_buffer.get(), ref_object_storage.m_unique_draw_common.get()};
         }
     }
     throw std::runtime_error{TRAFFICMONITOR_ERROR_STR("No matching render type for initializer")};

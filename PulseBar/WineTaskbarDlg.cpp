@@ -16,7 +16,11 @@ void CWineTaskbarDlg::AdjustTaskbarWndPos(bool force_adjust)
         rect.MoveToXY(0, screen_height - m_rect.Height());
     else
         rect.MoveToXY(screen_width - m_rect.Width(), screen_height - m_rect.Height());
-    this->MoveWindow(rect);
+
+    CRect current_rect;
+    ::GetWindowRect(GetSafeHwnd(), &current_rect);
+    if (force_adjust || current_rect != rect)
+        this->MoveWindow(rect);
 }
 
 void CWineTaskbarDlg::ResetTaskbarPos()

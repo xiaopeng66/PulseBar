@@ -1,5 +1,6 @@
 ﻿#include "stdafx.h"
 #include "DrawCommonHelper.h"
+#include <limits>
 
 UINT DrawCommonHelper::ProccessTextFormat(CRect rect, CSize text_length, IDrawCommon::Alignment align, bool multi_line) noexcept
 {
@@ -31,51 +32,31 @@ UINT DrawCommonHelper::ProccessTextFormat(CRect rect, CSize text_length, IDrawCo
 
 void DrawCommonHelper::ImageDrawAreaConvert(CSize image_size, CPoint& start_point, CSize& size, IDrawCommon::StretchMode stretch_mode)
 {
-    if (size.cx == 0 || size.cy == 0)       //如果指定的size为0，则使用位图的实际大小绘制
+    if (image_size.cx<=0 || image_size.cy<=0 || size.cx<0 || size.cy<0)
+    { size=CSize(0,0); return; }
+    if (size.cx==0 || size.cy==0)
+    { size=image_size; return; }
+    if (stretch_mode!=IDrawCommon::StretchMode::FILL && stretch_mode!=IDrawCommon::StretchMode::FIT)
+        return;
+    const auto bounded = [](long long value) {
+        const long long high=(std::numeric_limits<int>::max)();
+        const long long low=(std::numeric_limits<int>::min)();
+        return static_cast<int>(value>high ? high : (value<low ? low : value));
+    };
+    const long long source_width=image_size.cx, source_height=image_size.cy;
+    const int target_width=size.cx, target_height=size.cy;
+    const bool wider=source_width*target_height > source_height*target_width;
+    if ((stretch_mode==IDrawCommon::StretchMode::FILL && wider)
+        || (stretch_mode==IDrawCommon::StretchMode::FIT && !wider))
     {
-        size = CSize(image_size.cx, image_size.cy);
+        const long long scaled=source_width*target_height/source_height;
+        size.cx=bounded(scaled>0 ? scaled : 1);
+        start_point.x=bounded(static_cast<long long>(start_point.x)+(static_cast<long long>(target_width)-size.cx)/2);
     }
     else
     {
-        if (stretch_mode == IDrawCommon::StretchMode::FILL)
-        {
-            float w_h_ratio, w_h_ratio_draw;        //图像的宽高比、绘制大小的宽高比
-            w_h_ratio = static_cast<float>(image_size.cx) / image_size.cy;
-            w_h_ratio_draw = static_cast<float>(size.cx) / size.cy;
-            if (w_h_ratio > w_h_ratio_draw)     //如果图像的宽高比大于绘制区域的宽高比，则需要裁剪两边的图像
-            {
-                int image_width;        //按比例缩放后的宽度
-                image_width = image_size.cx * size.cy / image_size.cy;
-                start_point.x -= ((image_width - size.cx) / 2);
-                size.cx = image_width;
-            }
-            else
-            {
-                int image_height;       //按比例缩放后的高度
-                image_height = image_size.cy * size.cx / image_size.cx;
-                start_point.y -= ((image_height - size.cy) / 2);
-                size.cy = image_height;
-            }
-        }
-        else if (stretch_mode == IDrawCommon::StretchMode::FIT)
-        {
-            CSize draw_size = image_size;
-            float w_h_ratio, w_h_ratio_draw;        //图像的宽高比、绘制大小的宽高比
-            w_h_ratio = static_cast<float>(image_size.cx) / image_size.cy;
-            w_h_ratio_draw = static_cast<float>(size.cx) / size.cy;
-            if (w_h_ratio > w_h_ratio_draw)     //如果图像的宽高比大于绘制区域的宽高比
-            {
-                draw_size.cy = draw_size.cy * size.cx / draw_size.cx;
-                draw_size.cx = size.cx;
-                start_point.y += ((size.cy - draw_size.cy) / 2);
-            }
-            else
-            {
-                draw_size.cx = draw_size.cx * size.cy / draw_size.cy;
-                draw_size.cy = size.cy;
-                start_point.x += ((size.cx - draw_size.cx) / 2);
-            }
-            size = draw_size;
-        }
+        const long long scaled=source_height*target_width/source_width;
+        size.cy=bounded(scaled>0 ? scaled : 1);
+        start_point.y=bounded(static_cast<long long>(start_point.y)+(static_cast<long long>(target_height)-size.cy)/2);
     }
 }

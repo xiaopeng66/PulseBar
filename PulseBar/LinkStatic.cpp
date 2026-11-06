@@ -155,7 +155,7 @@ void CLinkStatic::OnPaint()
     GetWindowText(text);
 	if (text.GetLength()>0)
 	{
-		dc.DrawText(text, rect, DT_VCENTER | DT_SINGLELINE);
+		dc.DrawText(text, rect, DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
 	}
 }
 

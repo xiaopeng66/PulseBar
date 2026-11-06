@@ -32,6 +32,23 @@ static wstring WcharArrayToWString(const wchar_t* str)
         return wstring(str);
 }
 
+//第三方插件运行在宿主进程内，回调抛出的 C++ 异常不能越过宿主边界。
+//日志本身也不能把故障升级成崩溃，所以这里故意使用 noexcept 并保护日志调用。
+static void LogPluginCallbackFailure(const wchar_t* callback_name) noexcept
+{
+    try
+    {
+        std::wstring message{ L"插件 API 回调异常：" };
+        message += callback_name != nullptr ? callback_name : L"<unknown>";
+        message += L"，已使用安全默认值。";
+        CCommon::WriteLog(message.c_str(), theApp.m_log_path.c_str());
+    }
+    catch (...)
+    {
+        //日志是诊断手段，不能影响插件边界的安全返回。
+    }
+}
+
 //插件项目的返回值检查。
 //  GetItemId() 会作为 ini 的键名、并参与 std::wstring 的构造，GetItemName()/GetItemLableText()
 //  会被拼进 std::wstring。这些接口按 ABI 都可能返回空指针，而空指针一旦进入 std::wstring
@@ -41,14 +58,22 @@ static bool IsPluginItemValid(IPluginItem* item)
 {
     if (item == nullptr)
         return false;
-    const wchar_t* item_id = item->GetItemId();
-    if (item_id == nullptr || item_id[0] == L'\0')
+    try
+    {
+        const wchar_t* item_id = item->GetItemId();
+        if (item_id == nullptr || item_id[0] == L'\0')
+            return false;
+        if (item->GetItemName() == nullptr)
+            return false;
+        if (item->GetItemLableText() == nullptr)
+            return false;
+        return true;
+    }
+    catch (...)
+    {
+        LogPluginCallbackFailure(L"IPluginItem::GetItemId/GetItemName/GetItemLableText");
         return false;
-    if (item->GetItemName() == nullptr)
-        return false;
-    if (item->GetItemLableText() == nullptr)
-        return false;
-    return true;
+    }
 }
 
 void CPluginManager::LoadPlugins()
@@ -196,7 +221,16 @@ IPluginItem* CPluginManager::GetItemById(const std::wstring& item_id)
     {
         if (item == nullptr)
             continue;
-        const wchar_t* id = item->GetItemId();
+        const wchar_t* id = nullptr;
+        try
+        {
+            id = item->GetItemId();
+        }
+        catch (...)
+        {
+            LogPluginCallbackFailure(L"IPluginItem::GetItemId");
+            continue;
+        }
         //插件返回空指针时，std::wstring 的比较会退化成空串比较，这里显式跳过
         if (id != nullptr && std::wstring(id) == item_id)
             return item;
@@ -273,20 +307,64 @@ const std::set<CommonDisplayItem>& CPluginManager::AllDisplayItemsWithPlugins()
 
 int CPluginManager::GetItemWidth(IPluginItem* pItem, CDC* pDC)
 {
-    int width = 0;
     //pItem 为空的插件项目不该走到这里，但 GetItemWidth 是公开接口，判空更稳妥
     if (pItem == nullptr || pDC == nullptr)
-        return width;
+        return 0;
+
+    //0 是插件自绘接口约定的合法“无宽度/回退”值；其它值必须为可见的
+    //正数，同时限制上限，避免第三方返回负数或 INT_MAX 破坏任务栏几何。
+    const auto clamp_width = [](int value) noexcept
+    {
+        if (value == 0)
+            return 0;
+        if (value < CPluginManager::MIN_PLUGIN_ITEM_WIDTH)
+            return CPluginManager::MIN_PLUGIN_ITEM_WIDTH;
+        if (value > CPluginManager::MAX_PLUGIN_ITEM_WIDTH)
+            return CPluginManager::MAX_PLUGIN_ITEM_WIDTH;
+        return value;
+    };
+
+    int width{};
     ITMPlugin* plugin = GetPluginByItem(pItem);
-    if (plugin != nullptr && plugin->GetAPIVersion() >= 3)
+    bool use_width_ex = false;
+    if (plugin != nullptr)
     {
-        width = pItem->GetItemWidthEx(pDC->GetSafeHdc());       //优先使用GetItemWidthEx接口获取宽度
+        try
+        {
+            use_width_ex = plugin->GetAPIVersion() >= 3;
+        }
+        catch (...)
+        {
+            LogPluginCallbackFailure(L"ITMPlugin::GetAPIVersion");
+        }
     }
-    if (width == 0)
+    if (use_width_ex)
     {
-        width = theApp.DPI(pItem->GetItemWidth());
+        try
+        {
+            width = pItem->GetItemWidthEx(pDC->GetSafeHdc());       //优先使用GetItemWidthEx接口获取宽度
+        }
+        catch (...)
+        {
+            LogPluginCallbackFailure(L"IPluginItem::GetItemWidthEx");
+            width = 0;      //回退到旧接口，保留插件已有的宽度语义
+        }
+        if (width != 0)
+            return clamp_width(width);
     }
-    return width;
+
+    try
+    {
+        //GetItemWidth 的单位是 96 DPI。先限制原始值再缩放，避免 DPI
+        //乘法在宿主边界内溢出，最后再限制一次实际像素宽度。
+        width = theApp.DPI(clamp_width(pItem->GetItemWidth()));
+    }
+    catch (...)
+    {
+        LogPluginCallbackFailure(L"IPluginItem::GetItemWidth");
+        return 0;
+    }
+    return clamp_width(width);
 }
 
 std::wstring CPluginManager::PluginInfo::Property(ITMPlugin::PluginInfoIndex index) const

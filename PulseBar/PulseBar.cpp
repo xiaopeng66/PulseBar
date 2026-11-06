@@ -18,6 +18,7 @@
 #include "winrt/base.h"
 #endif
 #include <gdiplus.h>
+#include <algorithm>
 #include <cerrno>
 #include <cwchar>
 
@@ -1057,25 +1058,8 @@ void CPulseBarApp::InitMenuResourse()
             (UINT_PTR)m_taskbar_menu_plugin_sub_menu.m_hMenu, _T("<plugin name>"));
     }
 
-    //托盘菜单副本（m_taskbar_menu）原本没有任何插件设置入口：插件的“选项设置”
-    //只挂在任务栏窗口插件项的右键菜单（m_taskbar_menu_plugin）上，托盘这里
-    //只能进“插件管理”。在“插件管理”后加一个“插件”子菜单，每个加载成功的
-    //插件一个命令项，点击直接打开其选项设置。
-    CMenu* taskbar_menu_tray = FindMenuContainingCommand(&m_taskbar_menu, ID_DISPLAY_SETTINGS);
-    if (taskbar_menu_tray != nullptr)
-    {
-        for (int i = 0; i < taskbar_menu_tray->GetMenuItemCount(); ++i)
-        {
-            if (taskbar_menu_tray->GetMenuItemID(i) == ID_PLUGIN_MANAGE)
-            {
-                m_taskbar_menu_tray_plugins.CreatePopupMenu();
-                taskbar_menu_tray->InsertMenu(i + 1, MF_BYPOSITION | MF_POPUP | MF_STRING,
-                    (UINT_PTR)m_taskbar_menu_tray_plugins.m_hMenu, CCommon::LoadText(IDS_PLUGIN_MENU));
-                CMenuIcon::AddIconToMenuItem(taskbar_menu_tray->GetSafeHmenu(), i + 1, TRUE, GetMenuIcon(IDI_PLUGINS));
-                break;
-            }
-        }
-    }
+    //托盘菜单直接在“插件管理”之后插入每个成功插件的名称 popup，
+    //不再增加一层泛化的“插件”中间菜单。
     UpdateTrayPluginMenu();
 
     //为菜单项添加图标。所有子菜单均按命令 ID 递归定位，避免依赖资源中的固定位置。
@@ -1646,57 +1630,150 @@ void CPulseBarApp::UpdatePluginMenu(CMenu* pMenu, ITMPlugin* plugin, int plugin_
 
 void CPulseBarApp::UpdateTrayPluginMenu()
 {
-    if (m_taskbar_menu_tray_plugins.GetSafeHmenu() == nullptr)
+    if (m_tray_plugin_menu_active || m_tray_plugin_menu_building)
         return;
-    //插件集合只在启动时确定（禁用插件需重启生效），全量重建即可。
-    //DeleteMenu 对弹出式子项会连带销毁二级菜单句柄，无需单独跟踪生命周期。
-    while (m_taskbar_menu_tray_plugins.DeleteMenu(0, MF_BYPOSITION)) {}
-    const std::vector<CPluginManager::PluginInfo>& plugins = m_plugins.GetPlugins();
-    int added{};
-    for (int index = 0; index < static_cast<int>(plugins.size()); ++index)
+    CFlagLocker building(m_tray_plugin_menu_building);
+    CMenu* parent = FindMenuContainingCommand(&m_taskbar_menu, ID_PLUGIN_MANAGE);
+    m_tray_plugin_actions.clear();
+    if (parent == nullptr)
     {
-        if (added > (ID_PLUGIN_TRAY_MAX - ID_PLUGIN_TRAY_START) / 2)
-            break;      //命令ID区间用尽，与插件自带命令一样截断
-        const CPluginManager::PluginInfo& plugin_info = plugins[index];
-        if (plugin_info.plugin == nullptr || plugin_info.state != CPluginManager::PluginState::PS_SUCCEED)
+        m_tray_plugin_popup_handles.clear();
+        m_tray_plugin_parent_menu = nullptr;
+        return;
+    }
+    if (m_tray_plugin_parent_menu == parent->GetSafeHmenu())
+    {
+        for (int position=parent->GetMenuItemCount()-1; position>=0; --position)
+        {
+            CMenu* child = parent->GetSubMenu(position);
+            if (child != nullptr && std::find(m_tray_plugin_popup_handles.begin(),
+                m_tray_plugin_popup_handles.end(), child->GetSafeHmenu()) != m_tray_plugin_popup_handles.end())
+                parent->DeleteMenu(position, MF_BYPOSITION);
+        }
+    }
+    m_tray_plugin_popup_handles.clear();
+    m_tray_plugin_parent_menu = parent->GetSafeHmenu();
+    int insertion=-1;
+    for (int position=0; position<parent->GetMenuItemCount(); ++position)
+        if (parent->GetMenuItemID(position)==ID_PLUGIN_MANAGE) { insertion=position+1; break; }
+    if (insertion < 0)
+        return;
+
+    const auto& plugins = m_plugins.GetPlugins();
+    const unsigned int capacity = ID_PLUGIN_TRAY_MAX-ID_PLUGIN_TRAY_START+1;
+    unsigned int remaining_bases{};
+    for (const auto& info : plugins)
+        if (info.plugin != nullptr && info.state==CPluginManager::PluginState::PS_SUCCEED)
+            remaining_bases += 3;
+    remaining_bases = min(remaining_bases, capacity);
+    const auto safe_call = [&](auto call, auto fallback) {
+        try { return call(); }
+        catch (CException* exception) { exception->Delete(); }
+        catch (...) {}
+        CCommon::WriteLog("Plugin menu callback failed; using a safe fallback.", m_log_path.c_str());
+        return fallback;
+    };
+    for (const auto& info : plugins)
+    {
+        if (info.plugin == nullptr || info.state != CPluginManager::PluginState::PS_SUCCEED)
             continue;
-        //GetInfo 按 ABI 可能返回空指针（TaskBarDlg 弹出前有同样的兜底），改用插件文件名。
-        const wchar_t* plugin_name = plugin_info.plugin->GetInfo(ITMPlugin::TMI_NAME);
-        std::wstring menu_text = (plugin_name != nullptr && plugin_name[0] != L'\0')
-            ? std::wstring(plugin_name) : CFilePathHelper(plugin_info.file_path).GetFileName();
-        //每个插件一个二级子菜单：偶数号ID打开选项设置、奇数号ID打开详细信息。
-        CMenu plugin_menu;
-        plugin_menu.CreatePopupMenu();
-        plugin_menu.AppendMenu(MF_STRING | MF_ENABLED,
-            static_cast<UINT>(ID_PLUGIN_TRAY_START + index * 2), CCommon::LoadText(IDS_PLUGIN_OPTIONS, _T("...")));
-        plugin_menu.AppendMenu(MF_STRING | MF_ENABLED,
-            static_cast<UINT>(ID_PLUGIN_TRAY_START + index * 2 + 1), CCommon::LoadText(IDS_PLUGIN_INFO, _T("...")));
-        if (m_taskbar_menu_tray_plugins.AppendMenu(MF_STRING | MF_POPUP,
-            reinterpret_cast<UINT_PTR>(plugin_menu.Detach()), menu_text.c_str()))
-        {
-            HICON plugin_icon{};
-            if (plugin_info.plugin->GetAPIVersion() >= 5)
-                plugin_icon = static_cast<HICON>(plugin_info.plugin->GetPluginIcon());
-            if (plugin_icon != nullptr)
-                CMenuIcon::AddIconToMenuItem(m_taskbar_menu_tray_plugins.GetSafeHmenu(),
-                    ID_PLUGIN_TRAY_START + index * 2, FALSE, plugin_icon);
-            ++added;
-        }
-    }
-    //没有可用插件时置灰“插件”入口，避免展开为空的子菜单。
-    CMenu* taskbar_menu_tray = FindMenuContainingCommand(&m_taskbar_menu, ID_DISPLAY_SETTINGS);
-    if (taskbar_menu_tray != nullptr)
-    {
-        for (int i = 0; i < taskbar_menu_tray->GetMenuItemCount(); ++i)
-        {
-            CMenu* sub_menu = taskbar_menu_tray->GetSubMenu(i);
-            if (sub_menu != nullptr && sub_menu->GetSafeHmenu() == m_taskbar_menu_tray_plugins.GetSafeHmenu())
+        if (remaining_bases < 3)
+            break;
+        remaining_bases -= 3;
+        const std::wstring file_name = CFilePathHelper(info.file_path).GetFileName();
+        const auto plugin_name = safe_call([&]() {
+            const wchar_t* name=info.plugin->GetInfo(ITMPlugin::TMI_NAME);
+            return name != nullptr && name[0] ? std::wstring(name) : file_name;
+        }, file_name);
+        CMenu menu;
+        if (!menu.CreatePopupMenu())
+            continue;
+        std::vector<std::pair<UINT, TrayPluginAction>> actions;
+        const auto append = [&](TrayPluginActionKind kind, int command, const std::wstring& label, HICON icon) {
+            TrayPluginAction action{info.file_path,info.plugin,kind,command,label};
+            const std::wstring key=std::to_wstring(info.file_path.size())+L":"+info.file_path+L"|"
+                +std::to_wstring(reinterpret_cast<UINT_PTR>(info.plugin))+L"|"
+                +std::to_wstring(static_cast<int>(kind))+L"|"+std::to_wstring(command)+L"|"+label;
+            auto binding=m_tray_plugin_command_ids.find(key);
+            UINT id{};
+            if (binding != m_tray_plugin_command_ids.end())
+                id=binding->second;
+            else
             {
-                taskbar_menu_tray->EnableMenuItem(i, MF_BYPOSITION | (added > 0 ? MF_ENABLED : MF_GRAYED));
-                break;
+                const unsigned int reserve=kind==TrayPluginActionKind::PLUGIN_COMMAND ? remaining_bases : 0;
+                if (m_tray_plugin_command_ids.size()+reserve >= capacity)
+                    return UINT{};
+                id=ID_PLUGIN_TRAY_START+static_cast<UINT>(m_tray_plugin_command_ids.size());
+                m_tray_plugin_command_ids.emplace(key,id);
             }
+            if (!menu.AppendMenu(MF_STRING | MF_ENABLED,id,label.c_str()))
+                return UINT{};
+            actions.emplace_back(id,std::move(action));
+            if (icon != nullptr)
+                CMenuIcon::AddIconToMenuItem(menu.GetSafeHmenu(),id,FALSE,icon);
+            return id;
+        };
+        const UINT detail=append(TrayPluginActionKind::DETAIL,-1,
+            m_str_table.LoadMenuText(L"TXT_PLUGIN_DETAIL").c_str(),GetMenuIcon(IDI_INFO));
+        const UINT options=append(TrayPluginActionKind::OPTIONS,-1,
+            m_str_table.LoadMenuText(L"TXT_PLUGIN_OPTIONS").c_str(),GetMenuIcon(IDI_SETTINGS));
+        const UINT disabled=append(TrayPluginActionKind::DISABLE,-1,
+            m_str_table.LoadMenuText(L"TXT_PLUGIN_DISABLE").c_str(),nullptr);
+        if (!detail || !options || !disabled)
+            continue;
+        menu.CheckMenuItem(disabled,MF_BYCOMMAND | (m_cfg_data.plugin_disabled.Contains(file_name) ? MF_CHECKED : MF_UNCHECKED));
+        const int api=safe_call([&]() { return info.plugin->GetAPIVersion(); },0);
+        const int count=api>=5 ? max(0,min(safe_call([&]() { return info.plugin->GetCommandCount(); },0),257)) : 0;
+        bool separated=false;
+        for (int command=0; command<count; ++command)
+        {
+            //插件可复用 GetCommandName 的 scratch buffer；调用下一 API 前复制文本。
+            const std::wstring label=safe_call([&]() {
+                const wchar_t* name=info.plugin->GetCommandName(command);
+                return name != nullptr ? std::wstring(name) : std::wstring{};
+            },std::wstring{});
+            if (label.empty())
+                continue;
+            if (!separated) { menu.AppendMenu(MF_SEPARATOR); separated=true; }
+            HICON icon=safe_call([&]() { return static_cast<HICON>(info.plugin->GetCommandIcon(command)); },static_cast<HICON>(nullptr));
+            const UINT id=append(TrayPluginActionKind::PLUGIN_COMMAND,command,label,icon);
+            if (id==0)
+                break;
+            const int checked=safe_call([&]() { return info.plugin->IsCommandChecked(command); },0);
+            menu.CheckMenuItem(id,MF_BYCOMMAND | (checked ? MF_CHECKED : MF_UNCHECKED));
         }
+        HICON icon=api>=5 ? safe_call([&]() { return static_cast<HICON>(info.plugin->GetPluginIcon()); },static_cast<HICON>(nullptr)) : nullptr;
+        const HMENU popup=menu.GetSafeHmenu();
+        if (!parent->InsertMenu(insertion,MF_BYPOSITION | MF_POPUP | MF_STRING,
+            reinterpret_cast<UINT_PTR>(popup),plugin_name.c_str()))
+            continue;
+        menu.Detach();
+        m_tray_plugin_popup_handles.push_back(popup);
+        for (auto& action : actions)
+            m_tray_plugin_actions.emplace(action.first,std::move(action.second));
+        if (icon != nullptr)
+            CMenuIcon::AddIconToMenuItem(parent->GetSafeHmenu(),insertion,TRUE,icon);
+        ++insertion;
     }
+}
+
+
+HWND CPulseBarApp::GetDialogOwner(HWND fallback) const
+{
+    const auto usable = [](HWND window) {
+        return ::IsWindow(window) && ::IsWindowVisible(window) && ::IsWindowEnabled(window);
+    };
+    const HWND foreground=::GetAncestor(::GetForegroundWindow(),GA_ROOT);
+    for (const auto& item : CBaseDialog::AllUniqueHandels())
+        if (item.second==foreground && usable(item.second))
+            return foreground;
+    const HWND last_active=::GetLastActivePopup(fallback);
+    if (last_active != fallback && usable(last_active))
+        return last_active;
+    for (const auto& item : CBaseDialog::AllUniqueHandels())
+        if (usable(item.second))
+            return item.second;
+    return fallback;
 }
 
 void CPulseBarApp::CheckWindows11Taskbar()

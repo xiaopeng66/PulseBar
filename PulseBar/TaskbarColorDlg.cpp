@@ -35,10 +35,31 @@ void CTaskbarColorDlg::DoDataExchange(CDataExchange* pDX)
 
 BEGIN_MESSAGE_MAP(CTaskbarColorDlg, CBaseDialog)
     ON_NOTIFY(NM_DBLCLK, IDC_LIST1, &CTaskbarColorDlg::OnNMDblclkList1)
+    ON_WM_SIZE()
 END_MESSAGE_MAP()
 
 
 // CTaskbarColorDlg 消息处理程序
+
+void CTaskbarColorDlg::ResizeColumns()
+{
+    if (!::IsWindow(m_list_ctrl.GetSafeHwnd()))
+        return;
+    CHeaderCtrl* header = m_list_ctrl.GetHeaderCtrl();
+    if (header == nullptr || header->GetItemCount() < 3)
+        return;
+    CRect rect;
+    m_list_ctrl.GetClientRect(&rect);
+    if (rect.Width() <= 0)
+        return;
+    const int usable = max(3, rect.Width() - theApp.DPI(20) - 1);
+    const int width0 = max(1, usable / 2);
+    const int width1 = max(1, (usable - width0) / 2);
+    const int width2 = max(1, usable - width0 - width1);
+    m_list_ctrl.SetColumnWidth(0, width0);
+    m_list_ctrl.SetColumnWidth(1, width1);
+    m_list_ctrl.SetColumnWidth(2, width2);
+}
 
 
 BOOL CTaskbarColorDlg::OnInitDialog()
@@ -50,15 +71,11 @@ BOOL CTaskbarColorDlg::OnInitDialog()
     SetIcon(theApp.GetMenuIcon(IDI_TASKBAR_WINDOW), FALSE);		// 设置小图标
 
     //初始化列表控件
-    CRect rect;
-    m_list_ctrl.GetClientRect(rect);
     m_list_ctrl.SetExtendedStyle(LVS_EX_FULLROWSELECT | LVS_EX_LABELTIP);
-    int width0 = rect.Width() /2;
-    int width1 = (rect.Width() - width0 - theApp.DPI(20) - 1) / 2;
-    int width2 = rect.Width() - width0 - width1 - theApp.DPI(20) - 1;
-    m_list_ctrl.InsertColumn(0, CCommon::LoadText(IDS_ITEM), LVCFMT_LEFT, width0);
-    m_list_ctrl.InsertColumn(1, CCommon::LoadText(IDS_COLOR_LABEL), LVCFMT_LEFT, width1);
-    m_list_ctrl.InsertColumn(2, CCommon::LoadText(IDS_COLOR_VALUE), LVCFMT_LEFT, width2);
+    m_list_ctrl.InsertColumn(0, CCommon::LoadText(IDS_ITEM), LVCFMT_LEFT, 1);
+    m_list_ctrl.InsertColumn(1, CCommon::LoadText(IDS_COLOR_LABEL), LVCFMT_LEFT, 1);
+    m_list_ctrl.InsertColumn(2, CCommon::LoadText(IDS_COLOR_VALUE), LVCFMT_LEFT, 1);
+    ResizeColumns();
     m_list_ctrl.SetDrawItemRangMargin(theApp.DPI(2));
 
     //向列表中插入行
@@ -111,4 +128,11 @@ void CTaskbarColorDlg::OnNMDblclkList1(NMHDR *pNMHDR, LRESULT *pResult)
     }
 
     *pResult = 0;
+}
+
+void CTaskbarColorDlg::OnSize(UINT nType, int cx, int cy)
+{
+    CBaseDialog::OnSize(nType, cx, cy);
+    if (nType != SIZE_MINIMIZED)
+        ResizeColumns();
 }

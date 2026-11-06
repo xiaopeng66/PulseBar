@@ -28,6 +28,7 @@ private:
 protected:
     virtual CString GetDialogName() const override;
     CommonDisplayItem GetDisplayItem(int row);
+    void ResizeColumns();
 
 	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV 支持
 
@@ -41,4 +42,5 @@ public:
     afx_msg void OnNMRClickList1(NMHDR* pNMHDR, LRESULT* pResult);
     afx_msg void OnInitMenu(CMenu* pMenu);
     afx_msg void OnNMClickList1(NMHDR* pNMHDR, LRESULT* pResult);
+    afx_msg void OnSize(UINT nType, int cx, int cy);
 };

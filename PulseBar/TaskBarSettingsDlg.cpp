@@ -15,6 +15,7 @@
 #include "Win11TaskbarSettingDlg.h"
 #include "TaskbarHelper.h"
 #include "DrawCommon.h"
+#include "TaskbarThemeGeometry.h"
 
 // CTaskBarSettingsDlg 对话框
 
@@ -1203,49 +1204,50 @@ static const TemplateControl k_taskbar_template_controls[] = {
     { 18, 562, 84, 10, true, 1 },  // IDC_BACK_COLOR_STATIC
     { 112, 558, 40, 17, true, 1 },  // IDC_TEXT_COLOR_STATIC2
     { 164, 561, 146, 12, true, 1 },  // IDC_BACKGROUND_TRANSPARENT_CHECK
-    { 18, 583, 292, 12, true, 1 },  // IDC_AUTO_SET_BACK_COLOR_CHECK
+    { 18, 579, 292, 12, true, 1 },  // IDC_AUTO_SET_BACK_COLOR_CHECK
     { 18, 595, 190, 12, true, 1 },  // IDC_AUTO_ADAPT_LIGHT_THEME_CHECK
     { 226, 593, 84, 16, true, 1 },  // IDC_AUTO_ADAPT_SETTINGS_BUTTON
     { 18, 612, 84, 15, true, 1 },  // IDC_DEFAULT_STYLE_BUTTON
-    { 8, 638, 314, 68, true, 1 },  // IDC_STATIC
+    { 8, 638, 314, 86, true, 1 },  // IDC_STATIC
     { 18, 651, 186, 12, true, 1 },  // IDC_SETTINGS_IMAGE_CHECK
     { 210, 648, 100, 18, true, 1 },  // IDC_SETTINGS_IMAGE_BUTTON
-    { 18, 674, 90, 10, true, 1 },  // IDC_STATIC
-    { 112, 672, 46, 14, true, 1 },  // IDC_SETTINGS_OPACITY_EDIT
-    { 174, 674, 78, 10, true, 1 },  // IDC_STATIC
-    { 264, 672, 46, 14, true, 1 },  // IDC_SETTINGS_CORNER_EDIT
-    { 18, 686, 292, 14, true, 1 },  // IDC_STATIC
-    { 8, 805, 314, 80, true, 2 },  // IDC_STATIC
-    { 18, 820, 90, 10, true, 2 },  // IDC_DISPLAY_TO_SHOW_TASKBAR_WND_STATIC
-    { 112, 816, 198, 80, true, 2 },  // IDC_DISPLAY_TO_SHOW_TASKBAR_WND_COMBO
-    { 18, 841, 292, 12, true, 2 },  // IDC_TASKBAR_WND_ON_LEFT_CHECK
-    { 18, 856, 140, 18, true, 2 },  // IDC_WIN11_SETTINGS_BUTTON
-    { 8, 887, 314, 95, true, 2 },  // IDC_STATIC
-    { 18, 902, 90, 10, true, 2 },  // IDC_STATIC
-    { 112, 898, 198, 80, true, 2 },  // IDC_SETTINGS_HOVER_COMBO
-    { 18, 923, 90, 10, true, 2 },  // IDC_DOUBLE_CLICK_ACTION_STATIC
-    { 112, 920, 198, 140, true, 2 },  // IDC_DOUBLE_CLICK_COMBO
-    { 18, 945, 90, 10, true, 2 },  // IDC_EXE_PATH_STATIC
-    { 112, 943, 146, 14, true, 2 },  // IDC_EXE_PATH_EDIT
-    { 264, 942, 46, 16, true, 2 },  // IDC_BROWSE_BUTTON
-    { 8, 989, 314, 128, true, 2 },  // IDC_STATIC
-    { 18, 1003, 292, 12, true, 2 },  // IDC_SHOW_STATUS_BAR_CHECK
-    { 18, 1023, 292, 12, true, 2 },  // IDC_SHOW_NET_SPEED_FIGURE_CHECK
-    { 18, 1045, 90, 10, true, 2 },  // IDC_NET_SPEED_MAX_VALUE_STATIC
-    { 112, 1043, 54, 14, true, 2 },  // IDC_NET_SPEED_FIGURE_MAX_VALUE_EDIT
-    { 174, 1042, 60, 70, true, 2 },  // IDC_NET_SPEED_FIGURE_MAX_VALUE_UNIT_COMBO
-    { 18, 1066, 90, 10, true, 2 },  // IDC_USAGE_GRAPH_COLOR_STATIC
-    { 112, 1063, 40, 17, true, 2 },  // IDC_TEXT_COLOR_STATIC3
-    { 164, 1066, 146, 12, true, 2 },  // IDC_USAGE_GRAPH_FOLLOW_SYSTEM_CHECK
-    { 18, 1088, 90, 10, true, 2 },  // IDC_GRAPH_DISPLAY_MODE_STATIC
-    { 112, 1085, 90, 12, true, 2 },  // IDC_CM_GRAPH_BAR_RADIO
-    { 214, 1085, 96, 12, true, 2 },  // IDC_CM_GRAPH_PLOT_RADIO
-    { 18, 1103, 292, 12, true, 2 },  // IDC_SHOW_DASHED_BOX
-    { 8, 1121, 314, 20, true, 2 },  // IDC_SETTINGS_RENDERING_BUTTON
-    { 8, 1144, 314, 57, true, 2 },  // IDC_SETTINGS_RENDERING_GROUP
-    { 18, 1159, 130, 12, true, 2 },  // IDC_GDI_RADIO
-    { 164, 1159, 146, 12, true, 2 },  // IDC_D2D_RADIO
-    { 18, 1180, 292, 12, true, 2 },  // IDC_ENABLE_COLOR_EMOJI_CHECK
+    { 18, 670, 292, 14, true, 1 },  // IDC_SETTINGS_IMAGE_PATH
+    { 18, 692, 90, 10, true, 1 },  // IDC_STATIC
+    { 112, 690, 46, 14, true, 1 },  // IDC_SETTINGS_OPACITY_EDIT
+    { 174, 692, 78, 10, true, 1 },  // IDC_STATIC
+    { 264, 690, 46, 14, true, 1 },  // IDC_SETTINGS_CORNER_EDIT
+    { 18, 706, 292, 14, true, 1 },  // IDC_STATIC
+    { 8, 823, 314, 80, true, 2 },  // IDC_STATIC
+    { 18, 838, 90, 10, true, 2 },  // IDC_DISPLAY_TO_SHOW_TASKBAR_WND_STATIC
+    { 112, 834, 198, 80, true, 2 },  // IDC_DISPLAY_TO_SHOW_TASKBAR_WND_COMBO
+    { 18, 859, 292, 12, true, 2 },  // IDC_TASKBAR_WND_ON_LEFT_CHECK
+    { 18, 874, 140, 18, true, 2 },  // IDC_WIN11_SETTINGS_BUTTON
+    { 8, 905, 314, 95, true, 2 },  // IDC_STATIC
+    { 18, 920, 90, 10, true, 2 },  // IDC_STATIC
+    { 112, 916, 198, 80, true, 2 },  // IDC_SETTINGS_HOVER_COMBO
+    { 18, 941, 90, 10, true, 2 },  // IDC_DOUBLE_CLICK_ACTION_STATIC
+    { 112, 938, 198, 140, true, 2 },  // IDC_DOUBLE_CLICK_COMBO
+    { 18, 963, 90, 10, true, 2 },  // IDC_EXE_PATH_STATIC
+    { 112, 961, 146, 14, true, 2 },  // IDC_EXE_PATH_EDIT
+    { 264, 960, 46, 16, true, 2 },  // IDC_BROWSE_BUTTON
+    { 8, 1007, 314, 128, true, 2 },  // IDC_STATIC
+    { 18, 1021, 292, 12, true, 2 },  // IDC_SHOW_STATUS_BAR_CHECK
+    { 18, 1041, 292, 12, true, 2 },  // IDC_SHOW_NET_SPEED_FIGURE_CHECK
+    { 18, 1063, 90, 10, true, 2 },  // IDC_NET_SPEED_MAX_VALUE_STATIC
+    { 112, 1061, 54, 14, true, 2 },  // IDC_NET_SPEED_FIGURE_MAX_VALUE_EDIT
+    { 174, 1060, 60, 70, true, 2 },  // IDC_NET_SPEED_FIGURE_MAX_VALUE_UNIT_COMBO
+    { 18, 1084, 90, 10, true, 2 },  // IDC_USAGE_GRAPH_COLOR_STATIC
+    { 112, 1081, 40, 17, true, 2 },  // IDC_TEXT_COLOR_STATIC3
+    { 164, 1084, 146, 12, true, 2 },  // IDC_USAGE_GRAPH_FOLLOW_SYSTEM_CHECK
+    { 18, 1106, 90, 10, true, 2 },  // IDC_GRAPH_DISPLAY_MODE_STATIC
+    { 112, 1103, 90, 12, true, 2 },  // IDC_CM_GRAPH_BAR_RADIO
+    { 214, 1103, 96, 12, true, 2 },  // IDC_CM_GRAPH_PLOT_RADIO
+    { 18, 1121, 292, 12, true, 2 },  // IDC_SHOW_DASHED_BOX
+    { 8, 1139, 314, 20, true, 2 },  // IDC_SETTINGS_RENDERING_BUTTON
+    { 8, 1162, 314, 57, true, 2 },  // IDC_SETTINGS_RENDERING_GROUP
+    { 18, 1177, 130, 12, true, 2 },  // IDC_GDI_RADIO
+    { 164, 1177, 146, 12, true, 2 },  // IDC_D2D_RADIO
+    { 18, 1198, 292, 12, true, 2 },  // IDC_ENABLE_COLOR_EMOJI_CHECK
 };
 
 
@@ -1269,7 +1271,8 @@ void CTaskBarSettingsDlg::InitializeSections()
         item.id = ::GetDlgCtrlID(item.hwnd);
         CRect rect(tc.x, tc.y, tc.x + tc.cx, tc.y + tc.cy);
         MapDialogRect(rect);
-        CRect section_offset(0, 0, 0, 400 * tc.section);
+        const int section_offset_dlu = tc.section == 2 ? 818 : 400 * tc.section;
+        CRect section_offset(0, 0, 0, section_offset_dlu);
         MapDialogRect(section_offset);
         rect.OffsetRect(0, -section_offset.bottom);
         item.rect = rect;
@@ -1503,62 +1506,102 @@ void CTaskBarSettingsDlg::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT info)
         accent = theme->accent;
         style = theme->style;
         bold = theme->value_bold;
-        radius = style == 4 ? 999 : radius;
     }
     rect.DeflateRect(DPI(6), DPI(4));
-    const int alpha = max(1, min(m_data.tb_panel_opacity, 100)) * 255 / 100;
-    const int r = min(style == 4 ? rect.Height() / 2 : DPI(radius * 2), rect.Height() / 2);
+    const int width = rect.Width();
+    const int height = rect.Height();
+    if (width <= 0 || height <= 0)
+    {
+        dc.Detach();
+        return;
+    }
+    const BYTE alpha = static_cast<BYTE>(TaskbarThemeGeometry::PanelAlphaFromPercent(m_data.tb_panel_opacity));
+    const int r = TaskbarThemeGeometry::ResolveCornerRadius(width, height, DPI(max(0, radius)), style == 4);
     Gdiplus::Graphics graphics(dc.GetSafeHdc());
     graphics.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
-    Gdiplus::Rect rc(rect.left, rect.top, rect.Width() - 1, rect.Height() - 1);
+    Gdiplus::Rect rc(rect.left, rect.top, width, height);
     Gdiplus::GraphicsPath path;
-    path.AddArc(rc.X, rc.Y, r * 2, r * 2, 180, 90);
-    path.AddArc(rc.X + rc.Width - r * 2, rc.Y, r * 2, r * 2, 270, 90);
-    path.AddArc(rc.X + rc.Width - r * 2, rc.Y + rc.Height - r * 2, r * 2, r * 2, 0, 90);
-    path.AddArc(rc.X, rc.Y + rc.Height - r * 2, r * 2, r * 2, 90, 90);
-    path.CloseFigure();
+    if (r > 0)
+    {
+        path.AddArc(rc.X, rc.Y, r * 2, r * 2, 180, 90);
+        path.AddArc(rc.X + rc.Width - r * 2, rc.Y, r * 2, r * 2, 270, 90);
+        path.AddArc(rc.X + rc.Width - r * 2, rc.Y + rc.Height - r * 2, r * 2, r * 2, 0, 90);
+        path.AddArc(rc.X, rc.Y + rc.Height - r * 2, r * 2, r * 2, 90, 90);
+        path.CloseFigure();
+    }
     Gdiplus::Color bg(alpha, GetRValue(back), GetGValue(back), GetBValue(back));
     if (style == 1)
     {
         Gdiplus::Color end(alpha, (BYTE)((GetRValue(back) + GetRValue(accent)) / 2),
             (BYTE)((GetGValue(back) + GetGValue(accent)) / 2), (BYTE)((GetBValue(back) + GetBValue(accent)) / 2));
         Gdiplus::LinearGradientBrush brush(rc, bg, end, Gdiplus::LinearGradientModeVertical);
-        graphics.FillPath(&brush, &path);
+        if (r > 0)
+            graphics.FillPath(&brush, &path);
+        else
+            graphics.FillRectangle(&brush, rc);
     }
     else
     {
         Gdiplus::SolidBrush brush(bg);
-        graphics.FillPath(&brush, &path);
+        if (r > 0)
+            graphics.FillPath(&brush, &path);
+        else
+            graphics.FillRectangle(&brush, rc);
     }
     if (m_data.tb_use_background_image && !m_data.tb_background_image.empty())
     {
         Gdiplus::Image image(m_data.tb_background_image.c_str());
         if (image.GetLastStatus() == Gdiplus::Ok)
         {
-            Gdiplus::GraphicsPath clip;
-            clip.AddPath(&path, TRUE);
-            graphics.SetClip(&clip);
-            graphics.DrawImage(&image, rc.X, rc.Y, rc.Width, rc.Height);
-            graphics.ResetClip();
+            if (r > 0)
+            {
+                Gdiplus::GraphicsPath clip;
+                clip.AddPath(&path, TRUE);
+                graphics.SetClip(&clip);
+                graphics.DrawImage(&image, rc.X, rc.Y, rc.Width, rc.Height);
+                graphics.ResetClip();
+            }
+            else
+            {
+                graphics.DrawImage(&image, rc.X, rc.Y, rc.Width, rc.Height);
+            }
         }
     }
+    const BYTE accent_alpha = static_cast<BYTE>(alpha);
+    const BYTE accent_fade_alpha = static_cast<BYTE>(TaskbarThemeGeometry::AccentGradientEndAlpha(alpha));
     if (style == 2)
     {
-        Gdiplus::Rect bar(rect.left + r, rc.Y + rc.Height - DPI(3), rc.Width - r * 2, DPI(2));
-        Gdiplus::LinearGradientBrush brush(bar, Gdiplus::Color(255, GetRValue(accent), GetGValue(accent), GetBValue(accent)),
-            Gdiplus::Color(100, GetRValue(accent), GetGValue(accent), GetBValue(accent)), Gdiplus::LinearGradientModeHorizontal);
-        graphics.FillRectangle(&brush, bar);
+        TaskbarThemeGeometry::AccentBar accent_bar;
+        if (TaskbarThemeGeometry::MakeBottomAccentBar(width, height, r, DPI(2), DPI(2), accent_bar))
+        {
+            Gdiplus::Rect bar(rect.left + accent_bar.left, rect.top + accent_bar.top,
+                accent_bar.width, accent_bar.height);
+            Gdiplus::LinearGradientBrush brush(bar,
+                Gdiplus::Color(accent_alpha, GetRValue(accent), GetGValue(accent), GetBValue(accent)),
+                Gdiplus::Color(accent_fade_alpha, GetRValue(accent), GetGValue(accent), GetBValue(accent)),
+                Gdiplus::LinearGradientModeHorizontal);
+            graphics.FillRectangle(&brush, bar);
+        }
     }
     else if (style == 3)
     {
-        Gdiplus::Pen pen(Gdiplus::Color(255, GetRValue(accent), GetGValue(accent), GetBValue(accent)), 1.4f);
-        graphics.DrawPath(&pen, &path);
+        Gdiplus::Pen pen(Gdiplus::Color(accent_alpha, GetRValue(accent), GetGValue(accent), GetBValue(accent)), 1.4f);
+        if (r > 0)
+            graphics.DrawPath(&pen, &path);
+        else
+            graphics.DrawRectangle(&pen, rc);
     }
     else if (style == 4)
     {
-        Gdiplus::Rect bar(rect.left + DPI(4), rect.top + DPI(4), DPI(3), rect.Height() - DPI(8));
-        Gdiplus::SolidBrush brush(Gdiplus::Color(255, GetRValue(accent), GetGValue(accent), GetBValue(accent)));
-        graphics.FillRectangle(&brush, bar);
+        const int inset = DPI(4);
+        TaskbarThemeGeometry::AccentBar accent_bar;
+        if (TaskbarThemeGeometry::MakeLeftAccentBar(width, height, inset, inset, DPI(3), accent_bar))
+        {
+            Gdiplus::Rect bar(rect.left + accent_bar.left, rect.top + accent_bar.top,
+                accent_bar.width, accent_bar.height);
+            Gdiplus::SolidBrush brush(Gdiplus::Color(accent_alpha, GetRValue(accent), GetGValue(accent), GetBValue(accent)));
+            graphics.FillRectangle(&brush, bar);
+        }
     }
     CFont preview_font;
     FontInfo preview_info;

@@ -105,7 +105,8 @@ bool CPluginUpdateHelper::CheckForUpdate()
     //旧实现先 clear 共享表再边解析边 emplace，UI 线程的查询在整段
     //网络窗口内都能撞上重建中的 map（悬空引用/迭代器失效）。
     tinyxml2::XMLDocument doc;
-    doc.Parse(version_info.c_str(), version_info.size());
+    if (doc.Parse(version_info.c_str(), version_info.size()) != tinyxml2::XML_SUCCESS || doc.RootElement() == nullptr)
+        return false;       //损坏或空响应不是成功的新表，保留最后有效快照。
     std::map<std::wstring, PluginVersion> latest_versions;
     CTinyXml2Helper::IterateChildNode(doc.RootElement(), [&](tinyxml2::XMLElement* ele) {
         std::wstring file_name = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "file_name"));

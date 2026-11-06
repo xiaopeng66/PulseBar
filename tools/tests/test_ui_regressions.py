@@ -209,7 +209,11 @@ public:
     CToolTipCtrl m_tool_tips;
     CSupportedRenderEnums m_supported_render_enums;
     int font_requests{};
+    int adjust_calls{}, invalidate_calls{}, update_window_calls{};
     void SetTextFont() { ++font_requests; } // No real fonts/DCs/rendering.
+    bool AdjustWindowPos(bool) { ++adjust_calls; return true; }
+    void Invalidate(BOOL) { ++invalidate_calls; }
+    void UpdateWindow() { ++update_window_calls; }
     static void DisableRenderFeatureIfNecessary(CSupportedRenderEnums&) {}
     void ApplySettings();
     void CalculateWindowSize();
@@ -295,6 +299,7 @@ CString CommonDisplayItem::GetItemValueSampleText(bool) const { return L"v"; }
     for signature in ("CSpeedGraphTip::CSpeedGraphTip()", "CSpeedGraphTip& CSpeedGraphTip::Instance()",
                       "void CSpeedGraphTip::Hide()", "void CSpeedGraphTip::ForceHide()"):
         code += take("SpeedGraphTip.cpp", signature)
+    code += "void CSpeedGraphTip::Refresh() {}\n"
     height_macro = re.search(r"^#define TASKBAR_WND_HEIGHT[^\n]*", text("TaskBarDlg.h"), re.MULTILINE)
     if height_macro is None:
         raise ValueError("Cannot locate current taskbar layout height declaration")
@@ -448,6 +453,9 @@ bool F13Colors() {
     ok &= Check(theApp.saved.specify_each_item_color
                 && theApp.saved.text_colors.at(TDI_UP) == TaskbarItemColor{0x112233,0x445566},
                 "F13 SaveConfig must receive enabled per-item colors, not an inert palette");
+    ok &= Check(f.taskbar.adjust_calls == 1 && f.taskbar.invalidate_calls == 1
+                && f.taskbar.update_window_calls == 1,
+                "F13 ApplySettings immediately adjusts, invalidates and redraws the taskbar HWND");
     return ok;
 }
 
@@ -607,7 +615,66 @@ int wmain(int argc, wchar_t** argv) {
     return code, provenance
 
 
+def render_contracts():
+    """Method-level contracts for the taskbar blank-frame/geometry fixes.
+
+    These assertions read current production methods; they do not claim a real
+    desktop GUI or compositor run.
+    """
+    def source(name):
+        raw = (native.SOURCE / name).read_bytes()
+        try:
+            return raw.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            return raw.decode("gbk")
+
+    taskbar_cpp = source("TaskBarDlg.cpp")
+    win11_cpp = source("Win11TaskbarDlg.cpp")
+    wine_cpp = source("WineTaskbarDlg.cpp")
+    classical_cpp = source("ClassicalTaskbarDlg.cpp")
+    tip_cpp = source("SpeedGraphTip.cpp")
+    erase = native.method(taskbar_cpp, "BOOL CTaskBarDlg::OnEraseBkgnd(")
+    apply = native.method(taskbar_cpp, "void CTaskBarDlg::ApplySettings()")
+    set_dpi = native.method(taskbar_cpp, "void CTaskBarDlg::SetDPI(")
+    win11 = native.method(win11_cpp, "void CWin11TaskbarDlg::AdjustTaskbarWndPos(")
+    wine = native.method(wine_cpp, "void CWineTaskbarDlg::AdjustTaskbarWndPos(")
+    classical = native.method(classical_cpp, "void CClassicalTaskbarDlg::AdjustTaskbarWndPos(")
+    wnd_proc = native.method(tip_cpp, "LRESULT CSpeedGraphTip::WndProc(")
+    if "ON_WM_ERASEBKGND()" not in taskbar_cpp or "return TRUE;" not in erase:
+        raise AssertionError("taskbar must own WM_ERASEBKGND without MFC background erase")
+    for token in ("AdjustWindowPos(true);", "Invalidate(FALSE);", "UpdateWindow();"):
+        if token not in apply:
+            raise AssertionError(f"ApplySettings missing immediate redraw step: {token}")
+    if "OnDpiChanged(dpi, taskbar_rect)" not in set_dpi:
+        raise AssertionError("taskbar DPI changes must refresh the hover panel")
+    if "m_rcNotify.left - m_rcTaskbar.left" not in win11:
+        raise AssertionError("Win11 notify position must be taskbar-relative")
+    if "m_rect.left = max(0" not in win11 or "m_rect.top = max(0" not in win11:
+        raise AssertionError("Win11 final rectangle must be clamped")
+    if "GetWindowRect(GetSafeHwnd(), &current_rect)" not in wine:
+        raise AssertionError("Wine must compare the current rectangle")
+    if "current_rect != rect" not in wine:
+        raise AssertionError("Wine must avoid unchanged MoveWindow calls")
+    if "max(0, m_window_width)" not in classical or "max(0, m_window_height)" not in classical:
+        raise AssertionError("Classical geometry must reject negative dimensions")
+    paint = wnd_proc[wnd_proc.index("case WM_PAINT:"):wnd_proc.index("case WM_ERASEBKGND:")]
+    if "buffer_graphics.Clear" not in paint or paint.index("buffer_graphics.Clear") > paint.index("self->Draw"):
+        raise AssertionError("SpeedGraphTip must clear its first memory frame before drawing")
+    legend_start = tip_cpp.index("void DrawChartLegend(")
+    if "COLORREF text_color" not in tip_cpp[legend_start:legend_start + 260]:
+        raise AssertionError("SpeedGraphTip legend must accept a theme contrast color")
+    if "dc.SetTextColor(RGB(215, 215, 220))" in tip_cpp:
+        raise AssertionError("SpeedGraphTip legend must not use a fixed text color")
+    print("SOURCE RENDER CONTRACTS PASS", flush=True)
+
+
 def main():
+    render_contracts()
+    timer = native.method(native.source("TaskBarDlg.cpp"),
+                          "void CTaskBarDlg::OnTimer(UINT_PTR nIDEvent)")
+    if "CalculateWindowSize()" in timer and "AdjustWindowPos()" not in timer:
+        raise AssertionError(
+            "taskbar timer must apply a changed custom-draw width to the window")
     available = ("controls", "f11_owner", "f12_layout_hit", "f13_colors",
                  "f14_disable_pinned", "f15_percent_geometry")
     selected = sys.argv[1:]

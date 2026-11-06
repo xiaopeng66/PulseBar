@@ -396,11 +396,10 @@
 #define ID_PLUGIN_COMMAND_START         33408
 #define ID_PLUGIN_COMMAND_MAX           33664
 
-//托盘菜单“插件”子菜单：每个加载成功的插件一个二级子菜单，占两个命令ID：
-//偶数号(ID_PLUGIN_TRAY_START+索引*2)为选项设置、奇数号为插件详细信息。
-//命令ID减去ID_PLUGIN_TRAY_START后除以2即插件索引，上限32个插件。
-#define ID_PLUGIN_TRAY_START            33682
-#define ID_PLUGIN_TRAY_MAX              33745
+//托盘菜单动态插件命令区。命令 ID 由独立 registry 分配给插件详情、选项、
+//禁用/启用和插件自定义命令；不得按插件 vector 下标推导。
+#define ID_PLUGIN_TRAY_START            40000
+#define ID_PLUGIN_TRAY_MAX              49151
 #define ID_RESTORE_DEFAULT              33665
 #define ID_NOTIFY_ICON_SHOW_SPEED       33666
 #define ID_SHOW_SPEED_GRAPH_TIP         33667

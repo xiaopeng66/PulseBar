@@ -332,7 +332,8 @@ void COptionsDlg::OnDrawItem(int nIDCtl, LPDRAWITEMSTRUCT info)
     CFont* old_font = font != nullptr ? dc.SelectObject(font) : nullptr;
     CRect text_rect(pill);
     text_rect.left += DPI(16);
-    dc.DrawText(text, text_rect, DT_SINGLELINE | DT_VCENTER | DT_LEFT | DT_NOPREFIX);
+    //导航栏宽度固定，长语言文案使用省略号而不是绘制到内容页上。
+    dc.DrawText(text, text_rect, DT_SINGLELINE | DT_VCENTER | DT_LEFT | DT_NOPREFIX | DT_END_ELLIPSIS);
     if ((info->itemState & ODS_FOCUS) != 0)
         dc.DrawFocusRect(pill);
     if (old_font != nullptr)

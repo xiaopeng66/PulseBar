@@ -539,6 +539,9 @@ void CGeneralSettingsDlg::FillTemperatureNameCombos()
     //初始化选择硬盘下拉列表
     if (pMainWnd != nullptr && !pMainWnd->IsGetDiskUsageByPdh())
     {
+        //后台扫描完成后会重复填充，先抑制绘制避免 ResetContent 短暂露出空白，
+        //再按保存的名称恢复选中项，避免用户看到空的下拉框。
+        m_hard_disk_combo.SetRedraw(FALSE);
         m_hard_disk_combo.ResetContent();
         for (const auto& hdd_name : hdd_names)
             m_hard_disk_combo.AddString(hdd_name.c_str());
@@ -551,10 +554,12 @@ void CGeneralSettingsDlg::FillTemperatureNameCombos()
             m_hard_disk_combo.GetLBText(0, first_disk);
             m_data.hard_disk_name = first_disk.GetString();
         }
+        m_hard_disk_combo.SetRedraw(TRUE);
         if (cur_index >= 0)
             m_hard_disk_combo.SetCurSel(cur_index);
     }
     //初始化选择CPU下拉列表
+    m_select_cpu_combo.SetRedraw(FALSE);
     m_select_cpu_combo.ResetContent();
     m_select_cpu_combo.AddString(CCommon::LoadText(IDS_AVREAGE_TEMPERATURE));
     for (const auto& cpu_name : cpu_names)
@@ -562,6 +567,7 @@ void CGeneralSettingsDlg::FillTemperatureNameCombos()
     int cur_index = m_select_cpu_combo.FindString(-1, m_data.cpu_core_name.c_str());
     if (cur_index < 0)
         cur_index = 0;
+    m_select_cpu_combo.SetRedraw(TRUE);
     m_select_cpu_combo.SetCurSel(cur_index);
 }
 

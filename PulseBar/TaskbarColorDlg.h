@@ -24,6 +24,7 @@ public:
 protected:
     std::map<CommonDisplayItem, TaskbarItemColor> m_colors;
     CColorSettingListCtrl m_list_ctrl;
+    void ResizeColumns();
 
     virtual CString GetDialogName() const override;
 
@@ -32,6 +33,7 @@ protected:
 
 	DECLARE_MESSAGE_MAP()
 public:
-	virtual BOOL OnInitDialog();
+    virtual BOOL OnInitDialog();
     afx_msg void OnNMDblclkList1(NMHDR *pNMHDR, LRESULT *pResult);
+    afx_msg void OnSize(UINT nType, int cx, int cy);
 };

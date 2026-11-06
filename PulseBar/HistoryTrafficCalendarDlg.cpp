@@ -76,7 +76,7 @@ void CHistoryTrafficCalendarDlg::CalculateMonthTotalTraffic()
 void CHistoryTrafficCalendarDlg::SetComboSel()
 {
     int cnt{};
-    int year_selected;
+    int year_selected{ 0 };
     for (int i{ m_year_max }; i >= m_year_min; i--)
     {
         if (i == m_year)
@@ -155,15 +155,31 @@ BOOL CHistoryTrafficCalendarDlg::OnInitDialog()
     CTabDlg::OnInitDialog();
 
     // TODO:  在此添加额外的初始化
-    m_year = m_history_traffics[0].year;
-    m_month = m_history_traffics[0].month;
+    //历史文件可能为空（首次启动或损坏后恢复），日历页仍应可打开。
+    if (m_history_traffics.empty())
+    {
+        SYSTEMTIME now{};
+        GetLocalTime(&now);
+        m_year = now.wYear;
+        m_month = now.wMonth;
+        m_year_max = m_year_min = m_year;
+    }
+    else
+    {
+        m_year = m_history_traffics[0].year;
+        m_month = m_history_traffics[0].month;
+        m_year_max = m_year_min = m_year;
+        for (const auto& traffic : m_history_traffics)
+        {
+            m_year_max = max(m_year_max, traffic.year);
+            m_year_min = min(m_year_min, traffic.year);
+        }
+    }
     CCalendarHelper::GetCalendar(m_year, m_month, m_calendar, theApp.m_cfg_data.m_sunday_first);
     SetDayTraffic();
     CalculateMonthTotalTraffic();
 
     //初始化Combo Box
-    m_year_max = m_history_traffics[0].year;
-    m_year_min = m_history_traffics.back().year;
     for (int i{ m_year_max }; i >= m_year_min; i--)
     {
         m_year_combo.AddString(CCommon::IntToString(i));
@@ -190,20 +206,31 @@ BOOL CHistoryTrafficCalendarDlg::OnInitDialog()
 void CHistoryTrafficCalendarDlg::OnPaint()
 {
     CPaintDC dc(this); // device context for painting
-                       // TODO: 在此处添加消息处理程序代码
+                       // TODO: 在此处添加消息处理代码
                        // 不为绘图消息调用 CTabDlg::OnPaint()
-    CRect wndRect;
-    GetWindowRect(wndRect);
-    const int width = theApp.DPI(40);       //日历中每一个格子的宽度
-    const int height = theApp.DPI(30);      //日历中第一个格子的高度
-    m_draw_rect.left = m_start_x;
-    m_draw_rect.top = m_start_y;
-    //m_draw_rect.right = m_draw_rect.left + (CALENDAR_WIDTH*width);
-    m_draw_rect.right = wndRect.Width() - m_start_x;
-    m_draw_rect.bottom = m_draw_rect.top + ((CALENDAR_HEIGHT + 2) * height) + theApp.DPI(20);
+    CRect client_rect;
+    GetClientRect(&client_rect);
+    if (client_rect.Width() <= 0 || client_rect.Height() <= 0)
+        return;
+
+    //绘图区从顶部控件下方开始，且严格夹在客户区内。旧实现按固定日历高度
+    //创建双缓冲，窗口变矮时会把底部信息 BitBlt 到客户区外并留下裁剪残影。
+    m_draw_rect.left = min(max(0, m_start_x), client_rect.right);
+    m_draw_rect.top = min(max(0, m_start_y), client_rect.bottom);
+    m_draw_rect.right = client_rect.right;
+    m_draw_rect.bottom = client_rect.bottom;
+    if (m_draw_rect.Width() <= 0 || m_draw_rect.Height() <= 0)
+        return;
+
+    const CRect draw_area(0, 0, m_draw_rect.Width(), m_draw_rect.Height());
+    const int width = max(1, min(theApp.DPI(40),
+        max(1, draw_area.Width() / CALENDAR_WIDTH)));       //日历中每一个格子的宽度
+    const int height = max(1, min(theApp.DPI(30),
+        max(1, draw_area.Height() / (CALENDAR_HEIGHT + 2)))); //日历中每一个格子的高度
 
     //使用双缓冲绘图
     CDrawDoubleBuffer draw_double_buffer(&dc, m_draw_rect);
+
 
     //绘图
     CDrawCommon draw;
@@ -271,7 +298,9 @@ void CHistoryTrafficCalendarDlg::OnPaint()
                 frame_color = RGB(218, 91, 91);
             else
                 frame_color = RGB(1, 133, 238);
-            if (m_year == m_history_traffics[0].year && m_month == m_history_traffics[0].month && m_calendar[i][j].day == m_history_traffics[0].day)
+            if (!m_history_traffics.empty() && m_year == m_history_traffics[0].year &&
+                m_month == m_history_traffics[0].month &&
+                m_calendar[i][j].day == m_history_traffics[0].day)
                 draw.DrawRectOutLine(rect, frame_color, theApp.DPI(2));
 
             //绘制指示流量大小的矩形
@@ -293,7 +322,9 @@ void CHistoryTrafficCalendarDlg::OnPaint()
                 traffic_rect.right = traffic_rect.left + theApp.DPI(12);
                 traffic_rect.top = rect.top + theApp.DPI(16);
                 traffic_rect.bottom = traffic_rect.top + theApp.DPI(12);
-                draw.FillRect(traffic_rect, color);
+                CRect clipped_traffic_rect;
+                if (clipped_traffic_rect.IntersectRect(traffic_rect, draw_area))
+                    draw.FillRect(clipped_traffic_rect, color);
             }
         }
     }
@@ -309,49 +340,48 @@ void CHistoryTrafficCalendarDlg::OnPaint()
     CRect info_rect;
     info_rect.left = 0;
     info_rect.top = height * (CALENDAR_HEIGHT + 1) + theApp.DPI(5);
-    info_rect.right = info_rect.left + m_draw_rect.Width();
-    info_rect.bottom = info_rect.top + theApp.DPI(36);
+    info_rect.right = draw_area.right;
+    info_rect.bottom = min(draw_area.bottom, info_rect.top + theApp.DPI(36));
     draw.SetBackColor(RGB(255, 255, 255));
-    draw.DrawWindowText(info_rect, info, text_color, IDrawCommon::Alignment::LEFT, true, true);
+    if (info_rect.bottom > info_rect.top)
+        draw.DrawWindowText(info_rect, info, text_color, IDrawCommon::Alignment::LEFT, true, true);
 
-    //画图例
-    CRect rc_legend{ info_rect };
-    rc_legend.MoveToXY(CALENDAR_WIDTH * width + theApp.DPI(32), theApp.DPI(16));
-    rc_legend.right = m_draw_rect.Width();
-    rc_legend.bottom = rc_legend.top + theApp.DPI(16);
+    //画图例。宽度不足时仍把每个矩形夹到双缓冲区域内，避免小客户区下
+    //使用负宽度/越界矩形；右侧空间不足的文字由 DrawWindowText 自然裁剪。
+    CRect rc_legend{ 0, theApp.DPI(16), draw_area.right, theApp.DPI(32) };
+    rc_legend.left = min(draw_area.right, CALENDAR_WIDTH * width + theApp.DPI(32));
+    const int box_side{ min(theApp.DPI(12), max(1, rc_legend.Height())) };
+    const int line_gap{ max(1, theApp.DPI(6)) };
+    const CRect legend_clip = draw_area;
+    auto draw_legend = [&](COLORREF color, LPCTSTR text)
+    {
+        if (rc_legend.top >= legend_clip.bottom || rc_legend.right <= rc_legend.left)
+            return;
+        CRect box{ rc_legend.left, rc_legend.top + max(0, (rc_legend.Height() - box_side) / 2),
+            rc_legend.left + box_side, rc_legend.top + max(0, (rc_legend.Height() - box_side) / 2) + box_side };
+        CRect clipped_box;
+        if (clipped_box.IntersectRect(box, legend_clip))
+            draw.FillRect(clipped_box, color);
+        CRect text_rect{ box.right + theApp.DPI(4), rc_legend.top, rc_legend.right, rc_legend.bottom };
+        CRect clipped_text;
+        if (clipped_text.IntersectRect(text_rect, legend_clip))
+            draw.DrawWindowText(clipped_text, text, text_color);
+        rc_legend.MoveToY(rc_legend.bottom + line_gap);
+    };
+    if (rc_legend.top < legend_clip.bottom && rc_legend.right > rc_legend.left)
+    {
+        CRect legend_title;
+        if (legend_title.IntersectRect(rc_legend, legend_clip))
+            draw.DrawWindowText(legend_title, CCommon::LoadText(IDS_LEGEND, _T(":")), text_color,
+                IDrawCommon::Alignment::LEFT, true, true);
+    }
+    rc_legend.MoveToY(rc_legend.bottom + line_gap);
+    draw_legend(TRAFFIC_COLOR_BLUE, _T("0~1GB"));
+    draw_legend(TRAFFIC_COLOR_GREEN, _T("1GB~10GB"));
+    draw_legend(TRAFFIC_COLOR_YELLOE, _T("10GB~100GB"));
+    draw_legend(TRAFFIC_COLOR_RED, _T("100GB~1TB"));
+    draw_legend(TRAFFIC_COLOR_DARK_RED, _T("1TB~"));
 
-    draw.DrawWindowText(rc_legend, CCommon::LoadText(IDS_LEGEND, _T(":")), text_color, IDrawCommon::Alignment::LEFT, true, true);
-    rc_legend.MoveToY(rc_legend.bottom + theApp.DPI(6));
-    CRect rc_legend_box{ rc_legend };
-    const int box_side{ theApp.DPI(12) };
-    const int line_gap{ theApp.DPI(6) };
-    rc_legend_box.top = rc_legend.top + (rc_legend.Height() - box_side) / 2;
-    rc_legend_box.bottom = rc_legend_box.top + box_side;
-    rc_legend_box.right = rc_legend_box.left + box_side;
-    rc_legend.left = rc_legend_box.right + theApp.DPI(4);
-    //蓝色图例
-    draw.FillRect(rc_legend_box, TRAFFIC_COLOR_BLUE);
-    draw.DrawWindowText(rc_legend, _T("0~1GB"), text_color);
-    //绿色图例
-    rc_legend.MoveToY(rc_legend.bottom + line_gap);
-    rc_legend_box.MoveToY(rc_legend.top + (rc_legend.Height() - box_side) / 2);
-    draw.FillRect(rc_legend_box, TRAFFIC_COLOR_GREEN);
-    draw.DrawWindowText(rc_legend, _T("1GB~10GB"), text_color);
-    //黄色图例
-    rc_legend.MoveToY(rc_legend.bottom + line_gap);
-    rc_legend_box.MoveToY(rc_legend.top + (rc_legend.Height() - box_side) / 2);
-    draw.FillRect(rc_legend_box, TRAFFIC_COLOR_YELLOE);
-    draw.DrawWindowText(rc_legend, _T("10GB~100GB"), text_color);
-    //红色图例
-    rc_legend.MoveToY(rc_legend.bottom + line_gap);
-    rc_legend_box.MoveToY(rc_legend.top + (rc_legend.Height() - box_side) / 2);
-    draw.FillRect(rc_legend_box, TRAFFIC_COLOR_RED);
-    draw.DrawWindowText(rc_legend, _T("100GB~1TB"), text_color);
-    //深红色图例
-    rc_legend.MoveToY(rc_legend.bottom + line_gap);
-    rc_legend_box.MoveToY(rc_legend.top + (rc_legend.Height() - box_side) / 2);
-    draw.FillRect(rc_legend_box, TRAFFIC_COLOR_DARK_RED);
-    draw.DrawWindowText(rc_legend, _T("1TB~"), text_color);
 }
 
 
@@ -556,7 +586,9 @@ void CHistoryTrafficCalendarDlg::OnFirstDayOfWeekMonday()
 
 void CHistoryTrafficCalendarDlg::OnCalendarJumpToToday()
 {
-    // TODO: 在此添加命令处理程序代码
+    // TODO: 在此添加控件处理程序代码
+    if (m_history_traffics.empty())
+        return;
     m_year = m_history_traffics[0].year;
     m_month = m_history_traffics[0].month;
     SetComboSel();

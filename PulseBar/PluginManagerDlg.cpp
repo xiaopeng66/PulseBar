@@ -57,6 +57,28 @@ bool CPluginManagerDlg::IsSelectedPluginEnable()
     return plugin_loaded;
 }
 
+void CPluginManagerDlg::ResizeColumns()
+{
+    if (!::IsWindow(m_list_ctrl.GetSafeHwnd()))
+        return;
+    CHeaderCtrl* header = m_list_ctrl.GetHeaderCtrl();
+    if (header == nullptr || header->GetItemCount() < COL_MAX)
+        return;
+    CRect rect;
+    m_list_ctrl.GetClientRect(&rect);
+    if (rect.Width() <= 0)
+        return;
+    const int usable = max(COL_MAX, rect.Width() - theApp.DPI(20) - 1);
+    const int width0 = max(1, usable * 3 / 10);
+    const int width1 = max(1, usable * 3 / 10);
+    const int width3 = max(1, usable * 2 / 10);
+    const int width2 = max(1, usable - width0 - width1 - width3);
+    m_list_ctrl.SetColumnWidth(COL_FILE_NAME, width0);
+    m_list_ctrl.SetColumnWidth(COL_NAME, width1);
+    m_list_ctrl.SetColumnWidth(COL_VERSION, width2);
+    m_list_ctrl.SetColumnWidth(COL_STATUS, width3);
+}
+
 CString CPluginManagerDlg::GetDialogName() const
 {
     return _T("PluginManagerDlg");
@@ -88,6 +110,7 @@ BEGIN_MESSAGE_MAP(CPluginManagerDlg, CBaseDialog)
     ON_COMMAND(ID_PLUGIN_OPTIONS, &CPluginManagerDlg::OnPluginOptions)
     ON_COMMAND(ID_PLUGIN_DISABLE, &CPluginManagerDlg::OnPluginDisable)
     ON_MESSAGE(WM_LINK_CLICKED, &CPluginManagerDlg::OnLinkClicked)
+    ON_WM_SIZE()
 END_MESSAGE_MAP()
 
 
@@ -100,19 +123,18 @@ BOOL CPluginManagerDlg::OnInitDialog()
 
     // TODO:  在此添加额外的初始化
     SetIcon(theApp.GetMenuIcon(IDI_PLUGINS), FALSE);
+    SetBackgroundColor(GetSysColor(COLOR_WINDOW));
+    m_plugin_download_lnk.SetBackgroundColor(GetSysColor(COLOR_WINDOW));
+    m_plugin_dev_guide_lnk.SetBackgroundColor(GetSysColor(COLOR_WINDOW));
+    m_open_plugin_dir_lnk.SetBackgroundColor(GetSysColor(COLOR_WINDOW));
 
     //初始化列表控件
-    CRect rect;
-    m_list_ctrl.GetClientRect(rect);
     m_list_ctrl.SetExtendedStyle(LVS_EX_FULLROWSELECT | LVS_EX_LABELTIP);
-    int width0, width1, width2, width3;
-    width0 = width1 = rect.Width() * 3 / 10;
-    width3 = rect.Width() * 2 / 10;
-    width2 = rect.Width() - width0 - width1 - width3 - theApp.DPI(20) - 1;
-    m_list_ctrl.InsertColumn(COL_FILE_NAME, CCommon::LoadText(IDS_FILE_NAME), LVCFMT_LEFT, width0);
-    m_list_ctrl.InsertColumn(COL_NAME, CCommon::LoadText(IDS_PLUGIN_NAME), LVCFMT_LEFT, width1);
-    m_list_ctrl.InsertColumn(COL_VERSION, CCommon::LoadText(IDS_VERSION), LVCFMT_LEFT, width2);
-    m_list_ctrl.InsertColumn(COL_STATUS, CCommon::LoadText(IDS_STATUS), LVCFMT_LEFT, width3);
+    m_list_ctrl.InsertColumn(COL_FILE_NAME, CCommon::LoadText(IDS_FILE_NAME), LVCFMT_LEFT, 1);
+    m_list_ctrl.InsertColumn(COL_NAME, CCommon::LoadText(IDS_PLUGIN_NAME), LVCFMT_LEFT, 1);
+    m_list_ctrl.InsertColumn(COL_VERSION, CCommon::LoadText(IDS_VERSION), LVCFMT_LEFT, 1);
+    m_list_ctrl.InsertColumn(COL_STATUS, CCommon::LoadText(IDS_STATUS), LVCFMT_LEFT, 1);
+    ResizeColumns();
 
     //添加图标
     int item_num = theApp.m_plugins.GetPlugins().size();
@@ -190,11 +212,9 @@ BOOL CPluginManagerDlg::OnInitDialog()
         m_list_ctrl.SetItemText(index, COL_STATUS, status);
     }
 
-    if (theApp.m_general_data.update_source == 1)   //更新源为Gitee，跳转到Gitee的链接
-        m_plugin_download_lnk.SetURL(L"https://gitee.com/xiaopeng66/PulseBarPlugins/blob/main/download/plugin_download.md");
-    else //更新源为Github
-        m_plugin_download_lnk.SetURL(L"https://github.com/xiaopeng66/PulseBarPlugins/blob/main/download/plugin_download.md");
-    m_plugin_dev_guide_lnk.SetURL(L"https://github.com/xiaopeng66/PulseBar/wiki/%E6%8F%92%E4%BB%B6%E5%BC%80%E5%8F%91%E6%8C%87%E5%8D%97");
+    //文档由本项目维护，不指向不存在的插件仓库或未启用的 Wiki。
+    m_plugin_download_lnk.SetURL(L"https://github.com/xiaopeng66/PulseBar/blob/main/docs/plugins/downloads.md");
+    m_plugin_dev_guide_lnk.SetURL(L"https://github.com/xiaopeng66/PulseBar/blob/main/docs/plugins/development.md");
     m_open_plugin_dir_lnk.SetLinkIsURL(false);
 
     EnableControl();
@@ -352,8 +372,14 @@ afx_msg LRESULT CPluginManagerDlg::OnLinkClicked(WPARAM wParam, LPARAM lParam)
     if (pCtrl == &m_open_plugin_dir_lnk)
     {
         wstring plugin_dir = CCommon::GetModuleDir() + L"plugins";
-        CreateDirectory(plugin_dir.c_str(), NULL);       //如果plugins不存在，则创建它
-        ShellExecute(NULL, _T("open"), _T("explorer"), plugin_dir.c_str(), NULL, SW_SHOWNORMAL);
+        if (!CreateDirectoryW(plugin_dir.c_str(), nullptr) && GetLastError() != ERROR_ALREADY_EXISTS)
+        {
+            CCommon::WriteLog(L"Cannot create the plugin directory.", theApp.m_log_path.c_str());
+            return 0;
+        }
+        const auto opened = ShellExecuteW(GetSafeHwnd(), L"open", plugin_dir.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        if (reinterpret_cast<INT_PTR>(opened) <= 32)
+            CCommon::WriteLog(L"Cannot open the plugin directory.", theApp.m_log_path.c_str());
     }
 
     return 0;
@@ -384,4 +410,11 @@ BOOL CPluginManagerDlg::OnCommand(WPARAM wParam, LPARAM lParam)
     }
 
     return CBaseDialog::OnCommand(wParam, lParam);
+}
+
+void CPluginManagerDlg::OnSize(UINT nType, int cx, int cy)
+{
+    CBaseDialog::OnSize(nType, cx, cy);
+    if (nType != SIZE_MINIMIZED)
+        ResizeColumns();
 }

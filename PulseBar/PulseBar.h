@@ -34,6 +34,23 @@
 //用于“新版本启动时让旧实例退出”的注册消息
 constexpr UINT PB_QUIT_REQUEST_MESSAGE = WM_APP + 500;   //新版本请求旧实例退出
 
+enum class TrayPluginActionKind
+{
+    DETAIL,
+    OPTIONS,
+    DISABLE,
+    PLUGIN_COMMAND,
+};
+
+struct TrayPluginAction
+{
+    std::wstring file_path;       //稳定的插件身份，不依赖插件 vector 下标
+    ITMPlugin* plugin{};
+    TrayPluginActionKind kind{};
+    int plugin_command_index{ -1 };
+    std::wstring command_label;
+};
+
 class CPulseBarApp : public CWinApp, public ITrafficMonitor
 {
 public:
@@ -107,7 +124,15 @@ public:
     CMenu m_taskbar_menu;       //任务栏窗口右键菜单
     CMenu m_taskbar_menu_plugin;    //右击任务栏窗口插件区域的右键菜单
     CMenu m_taskbar_menu_plugin_sub_menu;
-    CMenu m_taskbar_menu_tray_plugins;      //托盘菜单的“插件”子菜单（每个加载成功的插件一个选项入口）
+
+    //托盘插件菜单的动态状态。父菜单接管 popup 后只保留句柄用于按句柄清理，
+    //不再让 CMenu wrapper 持有同一个 HMENU，避免重复 DestroyMenu。
+    std::map<UINT, TrayPluginAction> m_tray_plugin_actions;
+    std::vector<HMENU> m_tray_plugin_popup_handles;
+    HMENU m_tray_plugin_parent_menu{};
+    std::map<std::wstring, UINT> m_tray_plugin_command_ids; //进程内不把旧 ID 重新绑定到其他动作
+    bool m_tray_plugin_menu_active{};
+    bool m_tray_plugin_menu_building{};
 
 #ifndef WITHOUT_TEMPERATURE
     //硬件监控实例的构造状态。采样线程在锁外读它做快速跳过判断，
@@ -211,9 +236,10 @@ public:
     //更新插件子菜单
     //plugin_cmd_start_index: 插件命令在菜单中的起始位置
     static void UpdatePluginMenu(CMenu* pMenu, ITMPlugin* plugin, int plugin_cmd_start_index);
-    //重建托盘“插件”子菜单：为每个加载成功的插件添加一个直接打开其选项设置的命令项。
-    //托盘菜单副本原本没有插件入口，只能进“插件管理”。
+    //重建托盘插件菜单：在“插件管理”后直接添加每个成功插件的名称 popup。
+    //每个 popup 的动态命令由 m_tray_plugin_actions 独立 registry 路由。
     void UpdateTrayPluginMenu();
+    HWND GetDialogOwner(HWND fallback) const;
 
     void CheckWindows11Taskbar();
     bool IsWindows11Taskbar() const { return m_is_windows11_taskbar; }

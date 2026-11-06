@@ -3,38 +3,53 @@
 
 void CClassicalTaskbarDlg::AdjustTaskbarWndPos(bool force_adjust)
 {
+    if (m_hMin == nullptr || m_hBar == nullptr || !::IsWindow(m_hMin) || !::IsWindow(m_hBar))
+        return;
+
     ::GetWindowRect(m_hMin, m_rcMin); //获得最小化窗口的区域
     ::GetWindowRect(m_hBar, m_rcBar); //获得二级容器的区域
+    const int window_width = max(0, m_window_width);
+    const int window_height = max(0, m_window_height);
 
     if (m_taskbar_on_top_or_bottom)     //当任务栏在桌面顶部或底部时
     {
         //设置窗口大小
-        m_rect.right = m_rect.left + m_window_width;
-        m_rect.bottom = m_rect.top + m_window_height;
+        m_rect.right = m_rect.left + window_width;
+        m_rect.bottom = m_rect.top + window_height;
 
         if (force_adjust || m_rcMin.Width() != m_last_width)   //如果宽度改变了，重新设置任务栏窗口的位置
         {
             m_rcMinOri = m_rcMin;
-            m_left_space = m_rcMin.left - m_rcBar.left;
-            //保存上次的宽度
-            m_last_width = m_rcMin.Width() - m_rect.Width();
+            m_left_space = max(0, m_rcMin.left - m_rcBar.left);
+            //保存上次的宽度，任务栏比面板窄时不能提交负宽度。
+            const int available_width = max(0, m_rcMin.Width());
+            const int min_window_width = max(0, available_width - window_width);
+            m_last_width = min_window_width;
             //任务窗口显示在右侧时
             if (!theApp.m_taskbar_data.tbar_wnd_on_left)
             {
-                ::MoveWindow(m_hMin, m_left_space, 0, m_rcMin.Width() - m_rect.Width(), m_rcMin.Height(), TRUE);    //设置最小化窗口的位置
-                m_rect.MoveToX(m_left_space + m_rcMin.Width() - m_rect.Width() + 2);
+                ::MoveWindow(m_hMin, m_left_space, 0, min_window_width, max(0, m_rcMin.Height()), TRUE);    //设置最小化窗口的位置
+                m_rect.MoveToX(max(0, m_left_space + min_window_width - window_width + 2));
             }
             //任务栏窗口显示在左侧时
             else
             {
-                ::MoveWindow(m_hMin, m_left_space + m_rect.Width(), 0, m_rcMin.Width() - m_rect.Width(), m_rcMin.Height(), TRUE);
+                ::MoveWindow(m_hMin, m_left_space + window_width, 0, min_window_width, max(0, m_rcMin.Height()), TRUE);
                 m_rect.MoveToX(m_left_space);
             }
 
             //设置任务栏窗口的垂直位置
-            m_rect.MoveToY((m_rcBar.Height() - m_rect.Height()) / 2);
+            m_rect.MoveToY(max(0, (max(0, m_rcBar.Height()) - window_height) / 2));
             if (theApp.m_taskbar_data.horizontal_arrange && theApp.m_win_version.IsWindows7())
                 m_rect.MoveToY(m_rect.top + DPI(1));
+            const int bar_width = max(0, m_rcBar.Width());
+            const int bar_height = max(0, m_rcBar.Height());
+            const int rect_width = min(window_width, bar_width);
+            const int rect_height = min(window_height, bar_height);
+            m_rect.left = max(0, min(m_rect.left, bar_width - rect_width));
+            m_rect.top = max(0, min(m_rect.top, bar_height - rect_height));
+            m_rect.right = m_rect.left + rect_width;
+            m_rect.bottom = m_rect.top + rect_height;
             MoveWindow(m_rect);
         }
     }
@@ -44,24 +59,34 @@ void CClassicalTaskbarDlg::AdjustTaskbarWndPos(bool force_adjust)
         if (force_adjust || m_rcMin.Height() != m_last_height)     //如果高度改变了，重新设置任务栏窗口的位置
         {
             m_rcMinOri = m_rcMin;
-            m_top_space = m_rcMin.top - m_rcBar.top;
-            //保存上次的宽度
-            m_last_height = m_rcMin.Height() - m_rect.Height();
+            m_top_space = max(0, m_rcMin.top - m_rcBar.top);
+            //保存上次的高度，任务栏比面板矮时不能提交负高度。
+            const int available_height = max(0, m_rcMin.Height());
+            const int min_window_height = max(0, available_height - window_height);
+            m_last_height = min_window_height;
 
             if (!theApp.m_taskbar_data.tbar_wnd_on_left)
             {
-                ::MoveWindow(m_hMin, 0, m_top_space, m_rcMin.Width(), m_rcMin.Height() - m_rect.Height(), TRUE);    //设置最小化窗口的位置
-                m_rect.MoveToY(m_top_space + m_rcMin.Height() - m_rect.Height() + 2);
+                ::MoveWindow(m_hMin, 0, m_top_space, max(0, m_rcMin.Width()), min_window_height, TRUE);    //设置最小化窗口的位置
+                m_rect.MoveToY(max(0, m_top_space + min_window_height - window_height + 2));
             }
             else
             {
-                ::MoveWindow(m_hMin, 0, m_top_space + m_rect.Height(), m_rcMin.Width(), m_rcMin.Height() - m_rect.Height(), TRUE);  //设置最小化窗口的位置
+                ::MoveWindow(m_hMin, 0, m_top_space + window_height, max(0, m_rcMin.Width()), min_window_height, TRUE);  //设置最小化窗口的位置
                 m_rect.MoveToY(m_top_space);
             }
-            m_rect.MoveToX((m_rcMin.Width() - m_window_width) / 2);
-            int left_space = DPI(2);
+            m_rect.MoveToX(max(0, (max(0, m_rcMin.Width()) - window_width) / 2));
+            int left_space = max(0, DPI(2));
             if (m_rect.left < left_space)
                 m_rect.MoveToX(left_space);
+            const int bar_width = max(0, m_rcBar.Width());
+            const int bar_height = max(0, m_rcBar.Height());
+            const int rect_width = min(window_width, bar_width);
+            const int rect_height = min(window_height, bar_height);
+            m_rect.left = max(0, min(m_rect.left, bar_width - rect_width));
+            m_rect.top = max(0, min(m_rect.top, bar_height - rect_height));
+            m_rect.right = m_rect.left + rect_width;
+            m_rect.bottom = m_rect.top + rect_height;
             MoveWindow(m_rect);
         }
     }
@@ -79,8 +104,8 @@ void CClassicalTaskbarDlg::InitTaskbarWnd()
     ::GetWindowRect(m_hMin, m_rcMin);   //获得最小化窗口的区域
     ::GetWindowRect(m_hBar, m_rcBar);   //获得二级容器的区域
 
-    m_left_space = m_rcMin.left - m_rcBar.left;
-    m_top_space = m_rcMin.top - m_rcBar.top;
+    m_left_space = max(0, m_rcMin.left - m_rcBar.left);
+    m_top_space = max(0, m_rcMin.top - m_rcBar.top);
 }
 
 void CClassicalTaskbarDlg::ResetTaskbarPos()

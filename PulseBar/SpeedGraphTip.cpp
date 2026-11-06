@@ -60,6 +60,11 @@ namespace
         return l;
     }
 
+    COLORREF PanelBackgroundColor(const TaskbarThemeInfo* theme)
+    {
+        return theme != nullptr ? RGB(theme->bg_r, theme->bg_g, theme->bg_b) : RGB(32, 32, 36);
+    }
+
     COLORREF PanelLabelColor(const TaskbarThemeInfo* theme)
     {
         return theme != nullptr ? theme->label : RGB(160, 160, 165);
@@ -103,7 +108,8 @@ namespace
     }
 
     //S6: 图例(色段+文字,整体靠图表右上,不占独立行)
-    void DrawChartLegend(CDC& dc, const CRect& chart, const std::vector<std::pair<COLORREF, const wchar_t*>>& items, int dpi)
+    void DrawChartLegend(CDC& dc, const CRect& chart, const std::vector<std::pair<COLORREF, const wchar_t*>>& items,
+        COLORREF text_color, int dpi)
     {
         const int sw = 10 * dpi / 96;
         const int gap = 5 * dpi / 96;
@@ -121,7 +127,7 @@ namespace
         //夹到图表左缘是零成本的兜底:未来改文案或缩窄面板时图例不会画出面板外
         if (x < chart.left) x = chart.left;
         int cy = chart.top + 7 * dpi / 96;
-        dc.SetTextColor(RGB(215, 215, 220));
+        dc.SetTextColor(text_color);
         for (size_t i = 0; i < items.size(); i++)
         {
             CPen pen(PS_SOLID, 2, items[i].first);
@@ -204,13 +210,15 @@ int CSpeedGraphTip::CalcWindowHeight(int dpi) const
 
 void CSpeedGraphTip::Show(const CPoint& cursor_pos, const CRect& taskbar_wnd_rect, UINT dpi)
 {
-    if (m_pinned && IsVisible())
-        return;     //钉住期间不移动、不重设大小
+    if (m_pinned && IsVisible() && dpi == m_dpi)
+        return;     //钉住期间不移动；DPI 变化时仍需重设大小并刷新首帧
 
     CreateWindowIfNeeded();
     if (m_hWnd == nullptr || !IsWindow(m_hWnd))
         return;
 
+    const bool was_visible = IsVisible();
+    const bool dpi_changed = m_dpi != dpi;
     m_dpi = dpi;
     int w = S(PANEL_W, static_cast<int>(m_dpi));
     int h = CalcWindowHeight(m_dpi);
@@ -238,14 +246,23 @@ void CSpeedGraphTip::Show(const CPoint& cursor_pos, const CRect& taskbar_wnd_rec
     if (y < monitor_rect.top)
         y = monitor_rect.top;       //显示器比面板还矮时贴顶边,不越界
 
-    SetWindowPos(m_hWnd, HWND_TOPMOST, x, y, w, h, SWP_NOACTIVATE | SWP_SHOWWINDOW);
-    //圆角窗口区域:双缓冲位图的四角由此裁掉,避免出现方块角
-    int rgn_r = 6 * dpi / 96;
-    if (rgn_r < 2) rgn_r = 2;
-    CRgn rgn;
-    rgn.CreateRoundRectRgn(0, 0, w + 1, h + 1, rgn_r * 2, rgn_r * 2);
-    SetWindowRgn(m_hWnd, (HRGN)rgn.Detach(), FALSE);
-    InvalidateRect(m_hWnd, nullptr, FALSE);
+    CRect current;
+    const bool have_rect = ::GetWindowRect(m_hWnd, &current) != FALSE;
+    const CRect target(x, y, x + w, y + h);
+    const bool size_changed = !have_rect || current.Width() != w || current.Height() != h;
+    if (!was_visible || !have_rect || current != target)
+        SetWindowPos(m_hWnd, HWND_TOPMOST, x, y, w, h, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    if (!was_visible || size_changed || dpi_changed)
+    {
+        //只有尺寸/DPI 改变时重建 region；鼠标移动不应每次分配 GDI 区域并整帧重画。
+        int rgn_r = max(2, 6 * static_cast<int>(dpi) / 96);
+        CRgn rgn;
+        rgn.CreateRoundRectRgn(0, 0, w + 1, h + 1, rgn_r * 2, rgn_r * 2);
+        SetWindowRgn(m_hWnd, (HRGN)rgn.Detach(), FALSE);
+        InvalidateRect(m_hWnd, nullptr, FALSE);
+        if (!was_visible)
+            ::UpdateWindow(m_hWnd);
+    }
 }
 
 bool CSpeedGraphTip::IsCursorInHoverRegion(const CPoint& cursor_pos, const CRect& taskbar_wnd_rect) const
@@ -305,6 +322,30 @@ void CSpeedGraphTip::ForceHide()
     Hide();
 }
 
+void CSpeedGraphTip::Refresh()
+{
+    if (m_hWnd != nullptr && IsWindow(m_hWnd))
+        InvalidateRect(m_hWnd, nullptr, FALSE);
+}
+
+void CSpeedGraphTip::OnDpiChanged(UINT dpi, const CRect& taskbar_wnd_rect)
+{
+    if (dpi == 0)
+        return;
+
+    if (!IsVisible())
+    {
+        m_dpi = dpi;
+        return;
+    }
+
+    CRect panel_rect;
+    CPoint anchor = taskbar_wnd_rect.CenterPoint();
+    if (::GetWindowRect(m_hWnd, &panel_rect))
+        anchor = panel_rect.CenterPoint();
+    Show(anchor, taskbar_wnd_rect, dpi);
+}
+
 void CSpeedGraphTip::Draw(CDC& dc, const CRect& rect)
 {
     int dpi = m_dpi;    //与 Show/命中检测使用同一 DPI,窗口 DC 在进程非 DPI-aware 时返回虚化值
@@ -312,7 +353,7 @@ void CSpeedGraphTip::Draw(CDC& dc, const CRect& rect)
     //FindTaskbarTheme 返回 nullptr,面板会退回写死的深灰配色,和紧贴的任务栏配色不一致
     //(实测 T2 底色 30,30,34 而非自定义色,见 docs 15.12)。
     const TaskbarThemeInfo* theme = GetActiveTaskbarTheme();
-    COLORREF bg = theme != nullptr ? RGB(theme->bg_r, theme->bg_g, theme->bg_b) : RGB(32, 32, 36);
+    COLORREF bg = PanelBackgroundColor(theme);
     COLORREF label_c = PanelLabelColor(theme);
     COLORREF value_c = PanelValueColor(theme);
     COLORREF accent = PanelAccentColor(theme);
@@ -471,7 +512,7 @@ void CSpeedGraphTip::Draw(CDC& dc, const CRect& rect)
             }
         }
         //S6: 图例(右上角色段+文字,不占独立行):↓下载=红 ↑上传=绿
-        DrawChartLegend(dc, chart, { { RGB(240, 100, 100), _T("↓下载") }, { RGB(80, 200, 120), _T("↑上传") } }, dpi);
+        DrawChartLegend(dc, chart, { { RGB(240, 100, 100), _T("↓下载") }, { RGB(80, 200, 120), _T("↑上传") } }, label_c, dpi);
     }
 
     // ---- CPU/GPU 曲线(0-100%,填充面积图) ----
@@ -523,7 +564,7 @@ void CSpeedGraphTip::Draw(CDC& dc, const CRect& rect)
             }
         }
         //S6: 图例:CPU=青 GPU=橙
-        DrawChartLegend(dc, chart, { { RGB(79, 195, 247), _T("CPU") }, { RGB(255, 183, 77), _T("GPU") } }, dpi);
+        DrawChartLegend(dc, chart, { { RGB(79, 195, 247), _T("CPU") }, { RGB(255, 183, 77), _T("GPU") } }, label_c, dpi);
     }
 
     //S6: 曲线下方的文字区(今日流量/GPU状态/进程列表)按用户要求全部移除;
@@ -563,6 +604,13 @@ LRESULT CSpeedGraphTip::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         CBitmap mem_bmp;
         mem_bmp.CreateCompatibleBitmap(&dcWrap, rc.Width(), rc.Height());
         CBitmap* old_bmp = mem_dc.SelectObject(&mem_bmp);
+        //CreateCompatibleBitmap 的首帧内容未定义；先用当前主题稳定清屏，
+        //否则 Draw 的圆角路径外会把未初始化的黑/白像素提交到 DWM。
+        {
+            Gdiplus::Graphics buffer_graphics(mem_dc.GetSafeHdc());
+            const COLORREF buffer_bg = PanelBackgroundColor(GetActiveTaskbarTheme());
+            buffer_graphics.Clear(Gdiplus::Color(255, GetRValue(buffer_bg), GetGValue(buffer_bg), GetBValue(buffer_bg)));
+        }
         if (self != nullptr)
         {
             self->Draw(mem_dc, rc);

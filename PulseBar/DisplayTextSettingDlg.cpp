@@ -38,10 +38,29 @@ BEGIN_MESSAGE_MAP(CDisplayTextSettingDlg, CBaseDialog)
     ON_NOTIFY(NM_RCLICK, IDC_LIST1, &CDisplayTextSettingDlg::OnNMRClickList1)
     ON_WM_INITMENU()
     ON_NOTIFY(NM_CLICK, IDC_LIST1, &CDisplayTextSettingDlg::OnNMClickList1)
+    ON_WM_SIZE()
 END_MESSAGE_MAP()
 
 
 // CDisplayTextSettingDlg 消息处理程序
+
+void CDisplayTextSettingDlg::ResizeColumns()
+{
+    if (!::IsWindow(m_list_ctrl.GetSafeHwnd()))
+        return;
+    CHeaderCtrl* header = m_list_ctrl.GetHeaderCtrl();
+    if (header == nullptr || header->GetItemCount() < 2)
+        return;
+    CRect rect;
+    m_list_ctrl.GetClientRect(&rect);
+    if (rect.Width() <= 0)
+        return;
+    const int usable = max(2, rect.Width() - theApp.DPI(20) - 1);
+    const int width0 = max(1, usable / 2);
+    const int width1 = max(1, usable - width0);
+    m_list_ctrl.SetColumnWidth(0, width0);
+    m_list_ctrl.SetColumnWidth(1, width1);
+}
 
 
 BOOL CDisplayTextSettingDlg::OnInitDialog()
@@ -53,14 +72,10 @@ BOOL CDisplayTextSettingDlg::OnInitDialog()
     SetIcon(theApp.GetMenuIcon(IDI_ITEM), FALSE);		// 设置小图标
 
     //初始化列表控件
-    CRect rect;
-    m_list_ctrl.GetClientRect(rect);
     m_list_ctrl.SetExtendedStyle(LVS_EX_FULLROWSELECT | LVS_EX_LABELTIP);
-    int width0, width1;
-    width0 = rect.Width() / 2;
-    width1 = rect.Width() - width0 - theApp.DPI(20) - 1;
-    m_list_ctrl.InsertColumn(0, CCommon::LoadText(IDS_ITEM), LVCFMT_LEFT, width0);		//插入第0列
-    m_list_ctrl.InsertColumn(1, CCommon::LoadText(IDS_VALUE), LVCFMT_LEFT, width1);		//插入第1列
+    m_list_ctrl.InsertColumn(0, CCommon::LoadText(IDS_ITEM), LVCFMT_LEFT, 1);		//插入第0列
+    m_list_ctrl.InsertColumn(1, CCommon::LoadText(IDS_VALUE), LVCFMT_LEFT, 1);		//插入第1列
+    ResizeColumns();
 
     //向列表中插入行
     for (auto iter = m_display_texts.GetAllItems().begin(); iter != m_display_texts.GetAllItems().end(); ++iter)
@@ -154,4 +169,11 @@ void CDisplayTextSettingDlg::OnNMClickList1(NMHDR* pNMHDR, LRESULT* pResult)
     LPNMITEMACTIVATE pNMItemActivate = reinterpret_cast<LPNMITEMACTIVATE>(pNMHDR);
     m_item_selected = pNMItemActivate->iItem;
     *pResult = 0;
+}
+
+void CDisplayTextSettingDlg::OnSize(UINT nType, int cx, int cy)
+{
+    CBaseDialog::OnSize(nType, cx, cy);
+    if (nType != SIZE_MINIMIZED)
+        ResizeColumns();
 }

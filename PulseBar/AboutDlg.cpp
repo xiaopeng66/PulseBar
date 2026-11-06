@@ -58,10 +58,10 @@ CRect CAboutDlg::CalculatePicRect()
 
 BOOL CAboutDlg::OnInitDialog()
 {
+    SetRememberDlgSize(false);
     CBaseDialog::OnInitDialog();
 
     // TODO:  在此添加额外的初始化
-    SetRememberDlgSize(false);
 
     m_license.SetLinkIsURL(false);
 

@@ -200,8 +200,17 @@ void CTabDlg::EnableDlgCtrl(UINT id, bool enable)
 void CTabDlg::ShowDlgCtrl(UINT id, bool show)
 {
     CWnd* pCtrl = GetDlgItem(id);
-    if (pCtrl != nullptr)
-        pCtrl->ShowWindow(show);
+    if (pCtrl == nullptr || !::IsWindow(pCtrl->GetSafeHwnd()))
+        return;
+
+    CRect rect;
+    pCtrl->GetWindowRect(&rect);
+    ScreenToClient(&rect);
+    pCtrl->ShowWindow(show ? SW_SHOW : SW_HIDE);
+    //显隐动态控件后，父窗口必须擦除原矩形并立即重绘；仅 ShowWindow
+    //会把分组框/编辑框的旧像素留在 DWM 表面，切换分区时尤其明显。
+    RedrawWindow(&rect, nullptr,
+        RDW_INVALIDATE | RDW_ERASE | RDW_UPDATENOW | RDW_ALLCHILDREN);
 }
 
 BEGIN_MESSAGE_MAP(CTabDlg, CBaseDialog)
@@ -291,7 +300,8 @@ void CTabDlg::OnOK()
 
 bool CTabDlg::IsScrollBarVisible()
 {
-    SCROLLINFO scrollinfo;
+    SCROLLINFO scrollinfo{};
+    scrollinfo.cbSize = sizeof(scrollinfo);
     GetScrollInfo(SB_VERT, &scrollinfo, SIF_ALL);
     bool visible = scrollinfo.nPage < scrollinfo.nMax;
     return visible;

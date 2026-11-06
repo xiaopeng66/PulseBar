@@ -32,6 +32,7 @@ protected:
     void EnableControl();
     bool IsSelectedValid();
     bool IsSelectedPluginEnable();     //选中插件是否可用
+    void ResizeColumns();
 
     enum Column
     {
@@ -59,6 +60,7 @@ public:
     afx_msg void OnPluginDetail();
     afx_msg void OnPluginOptions();
     afx_msg void OnPluginDisable();
+    afx_msg void OnSize(UINT nType, int cx, int cy);
 protected:
     afx_msg LRESULT OnLinkClicked(WPARAM wParam, LPARAM lParam);
     virtual BOOL OnCommand(WPARAM wParam, LPARAM lParam);

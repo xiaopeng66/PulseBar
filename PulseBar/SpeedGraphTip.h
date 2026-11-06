@@ -22,6 +22,10 @@ public:
     bool IsCursorInHoverRegion(const CPoint& cursor_pos, const CRect& taskbar_wnd_rect) const;
     bool IsVisible() const { return m_hWnd != nullptr && IsWindowVisible(m_hWnd); }
     bool IsPinned() const { return m_pinned; }
+    //主题、透明度或 DPI 变化后主动丢弃旧帧；窗口隐藏时为空操作。
+    void Refresh();
+    //任务栏 DPI 改变时同步面板尺寸/布局，钉住状态也不能保留旧 DPI 帧。
+    void OnDpiChanged(UINT dpi, const CRect& taskbar_wnd_rect);
 
     //在给定 DC 上绘制面板(供自绘窗口调用)
     void Draw(CDC& dc, const CRect& rect);

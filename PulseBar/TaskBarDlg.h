@@ -16,6 +16,7 @@
 #define WM_TASKBAR_MENU_POPED_UP (WM_USER + 1004)		//定义任务栏窗口右键菜单弹出时发出的消息
 //#define TASKBAR_GRAPH_MAX_LEN 600						//历史数据存储最大长度
 #define TASKBAR_GRAPH_STEP 5							//几秒钟画一条线
+constexpr UINT_PTR TASKBAR_RENDER_RETRY_TIMER = 0x5042;
 
 class CTaskBarDlg : public CDialogEx
 {
@@ -43,6 +44,9 @@ public:
     const CRect& GetRectForDpiCheck() const;
 
     UINT GetDPI() const;
+    UINT_PTR GetInstanceToken() const { return m_instance_token; }
+    bool IsReadyToShow() const { return m_initialization_succeeded; }
+    bool NeedsWindowRecreation() const;
     void SetDPI(UINT dpi);
     UINT DPI(UINT pixel) const;
     int DPI(int pixel) const;
@@ -90,7 +94,9 @@ protected:
 
     virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV 支持
 
-    HWND m_hTaskbar;	//任务栏窗口句柄
+    HWND m_hTaskbar{};	//任务栏窗口句柄
+    UINT_PTR m_instance_token{};
+    bool m_initialization_succeeded{};
     CRect m_rcTaskbar;  //任务栏的矩形区域
     CRect m_rect;		//当前窗口的矩形区域
     int m_window_width{};   //保存计算得到的窗口宽度
@@ -160,6 +166,9 @@ protected:
     CDC* m_pDC{};		//窗口的DC，用来计算窗口的宽度
 
     bool m_monitor_data_updated{ true };            //采样完成后重绘一次，包含插件和所有监控指标
+    bool m_in_paint{};
+    bool m_render_retry_pending{};
+    unsigned int m_consecutive_frame_failures{};
     size_t m_last_layout_signature{};               //优化:上次布局重算的输入签名,配置未变化时跳过 CalculateWindowSize
 
     //查找任务栏的句柄
@@ -243,6 +252,7 @@ public:
     afx_msg void OnTimer(UINT_PTR nIDEvent);
     virtual BOOL OnCommand(WPARAM wParam, LPARAM lParam);
     afx_msg void OnPaint();
+    afx_msg BOOL OnEraseBkgnd(CDC* pDC);
     afx_msg void OnClose();
     afx_msg void OnLButtonUp(UINT nFlags, CPoint point);
 protected:

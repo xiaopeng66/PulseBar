@@ -44,6 +44,7 @@ private:
 protected:
 	virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV 支持
     void ShowInfo();
+    void ResizeColumns();
     static CString GetRowName(int row_index);   //获取行的名称
 
     // 通过 CBaseDialog 继承
@@ -59,5 +60,6 @@ public:
     afx_msg void OnBnClickedNextButton();
     virtual BOOL PreTranslateMessage(MSG* pMsg);
     afx_msg BOOL OnMouseWheel(UINT nFlags, short zDelta, CPoint pt);
+    afx_msg void OnSize(UINT nType, int cx, int cy);
 
 };

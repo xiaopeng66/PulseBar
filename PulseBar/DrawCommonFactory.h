@@ -48,6 +48,24 @@ struct AllInvolvedDrawCommonObjectsStorage
     UniqueIDrawBuffer m_unique_draw_buffer{};
     UniqueIDrawCommon m_unique_draw_common{};
 
+    template <class T, class... Args>
+    T* EmplaceDrawBuffer(Args&&... args)
+    {
+        auto* object = static_cast<T*>(static_cast<void*>(std::addressof(m_storage.m_draw_buffer_union_storage)));
+        EmplaceAt(object, std::forward<Args>(args)...);
+        m_unique_draw_buffer.reset(static_cast<IDrawBuffer*>(object));
+        return object;
+    }
+
+    template <class T, class... Args>
+    T* EmplaceDrawCommon(Args&&... args)
+    {
+        auto* object = static_cast<T*>(static_cast<void*>(std::addressof(m_storage.m_draw_common_union_storage)));
+        EmplaceAt(object, std::forward<Args>(args)...);
+        m_unique_draw_common.reset(static_cast<IDrawCommon*>(object));
+        return object;
+    }
+
     AllInvolvedDrawCommonObjectsStorage() = default;
     ~AllInvolvedDrawCommonObjectsStorage() = default;
     // 禁用复制移动
