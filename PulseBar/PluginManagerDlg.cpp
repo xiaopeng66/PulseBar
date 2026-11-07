@@ -386,6 +386,7 @@ void CPluginManagerDlg::OnBnClickedInstallPluginButton()
     int installed = 0;
     int failed = 0;
     CString skipped_arch;
+    CString locked_files;
     POSITION pos = file_dialog.GetStartPosition();
     while (pos != nullptr)
     {
@@ -403,7 +404,23 @@ void CPluginManagerDlg::OnBnClickedInstallPluginButton()
             continue;
         }
 
-        if (::CopyFileW(source_path, plugin_dir + file_name, FALSE))
+        const CString target_path = plugin_dir + file_name;
+        //目标已存在时先探测能否写入：被程序加载的 DLL 无法覆盖，要给出准确原因
+        if (::GetFileAttributesW(target_path) != INVALID_FILE_ATTRIBUTES)
+        {
+            HANDLE probe = ::CreateFileW(target_path, GENERIC_WRITE, 0, nullptr,
+                OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+            if (probe == INVALID_HANDLE_VALUE)
+            {
+                if (!locked_files.IsEmpty())
+                    locked_files += L", ";
+                locked_files += file_name;
+                continue;
+            }
+            ::CloseHandle(probe);
+        }
+
+        if (::CopyFileW(source_path, target_path, FALSE))
             ++installed;
         else
             ++failed;
@@ -414,6 +431,8 @@ void CPluginManagerDlg::OnBnClickedInstallPluginButton()
         message += L"\r\n" + CString(CCommon::LoadTextFormat(IDS_PLUGIN_INSTALL_FAILED, { failed }));
     if (!skipped_arch.IsEmpty())
         message += L"\r\n" + CString(CCommon::LoadTextFormat(IDS_PLUGIN_INSTALL_ARCH_SKIPPED, { skipped_arch.GetString() }));
+    if (!locked_files.IsEmpty())
+        message += L"\r\n" + locked_files + L"\r\n" + CString(CCommon::LoadText(IDS_STORE_IN_USE));
 
     if (installed == 0)
     {

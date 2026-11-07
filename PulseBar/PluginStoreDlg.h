@@ -28,8 +28,9 @@ public:
     afx_msg void OnSize(UINT nType, int cx, int cy);
 
 private:
-    void RefreshList();
+    void RefreshList(bool force_fetch);
     void UpdateDescription();
+    void ResizeColumns();
     int GetSelectedIndex() const;
     int FindLocalState(const PluginStoreItem& item) const;   //0=未安装 1=已安装
 

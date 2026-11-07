@@ -102,26 +102,32 @@ BOOL CPluginStoreDlg::OnInitDialog()
     m_list.InsertColumn(2, CCommon::LoadText(TXT_STORE_COL_AUTHOR), LVCFMT_LEFT, theApp.DPI(90));
     m_list.InsertColumn(3, CCommon::LoadText(TXT_STORE_COL_STATUS), LVCFMT_LEFT, theApp.DPI(70));
 
-    RefreshList();
+    //首次打开优先用启动时已拉到的清单，避免每次打开都卡在网络请求上
+    RefreshList(false);
+    ResizeColumns();
     return TRUE;
 }
 
-void CPluginStoreDlg::RefreshList()
+void CPluginStoreDlg::RefreshList(bool force_fetch)
 {
-    CWaitCursor wait_cursor;
-    m_items.clear();
     m_list.DeleteAllItems();
     m_fetch_failed = false;
 
-    if (!theApp.m_plugin_update.CheckForUpdate())
+    m_items = theApp.m_plugin_update.GetStoreItems();
+    if (force_fetch || m_items.empty())
     {
-        m_fetch_failed = true;
-        SetDlgItemText(IDC_STORE_DESC, CCommon::LoadText(IDS_STORE_FETCH_FAILED));
-        GetDlgItem(IDC_STORE_INSTALL)->EnableWindow(FALSE);
-        return;
+        CWaitCursor wait_cursor;
+        if (!theApp.m_plugin_update.CheckForUpdate())
+        {
+            m_fetch_failed = true;
+            m_items.clear();
+            SetDlgItemText(IDC_STORE_DESC, CCommon::LoadText(IDS_STORE_FETCH_FAILED));
+            GetDlgItem(IDC_STORE_INSTALL)->EnableWindow(FALSE);
+            return;
+        }
+        m_items = theApp.m_plugin_update.GetStoreItems();
     }
 
-    m_items = theApp.m_plugin_update.GetStoreItems();
     int row = 0;
     for (const auto& item : m_items)
     {
@@ -193,7 +199,7 @@ void CPluginStoreDlg::OnNMDblclkStoreList(NMHDR* pNMHDR, LRESULT* pResult)
 
 void CPluginStoreDlg::OnBnClickedStoreRefresh()
 {
-    RefreshList();
+    RefreshList(true);   //手动刷新强制联网
 }
 
 void CPluginStoreDlg::OnBnClickedStoreInstall()
@@ -239,7 +245,17 @@ void CPluginStoreDlg::OnBnClickedStoreInstall()
         }
     }
 
-    ::DeleteFileW(target_path);
+    //旧文件删不掉说明正被程序加载，此时覆盖会失败：给出准确原因，不要误报成网络问题
+    if (::GetFileAttributesW(target_path) != INVALID_FILE_ATTRIBUTES)
+    {
+        ::DeleteFileW(target_path);
+        if (::GetFileAttributesW(target_path) != INVALID_FILE_ATTRIBUTES)
+        {
+            ::DeleteFileW(temp_path);
+            MessageBox(CCommon::LoadText(IDS_STORE_IN_USE), nullptr, MB_ICONWARNING | MB_OK);
+            return;
+        }
+    }
     if (!::MoveFileW(temp_path, target_path))
     {
         ::DeleteFileW(temp_path);
@@ -259,18 +275,58 @@ void CPluginStoreDlg::OnBnClickedStoreInstall()
     }
 }
 
+void CPluginStoreDlg::ResizeColumns()
+{
+    if (!::IsWindow(m_list.GetSafeHwnd()))
+        return;
+    CRect rect;
+    m_list.GetClientRect(&rect);
+    if (rect.Width() <= 0)
+        return;
+    const int usable = max(1, rect.Width() - theApp.DPI(20) - 1);
+    const int width1 = usable * 18 / 100;      //版本
+    const int width2 = usable * 25 / 100;      //作者
+    const int width3 = usable * 18 / 100;      //状态
+    const int width0 = max(1, usable - width1 - width2 - width3);
+    m_list.SetColumnWidth(0, width0);
+    m_list.SetColumnWidth(1, width1);
+    m_list.SetColumnWidth(2, width2);
+    m_list.SetColumnWidth(3, width3);
+}
+
 void CPluginStoreDlg::OnSize(UINT nType, int cx, int cy)
 {
     CBaseDialog::OnSize(nType, cx, cy);
     if (m_list.GetSafeHwnd() == nullptr)
         return;
-    //列表与说明区跟随窗口宽度
+
     CRect rect;
     GetClientRect(&rect);
     const int margin = theApp.DPI(7);
-    const int list_height = theApp.DPI(96);
-    m_list.MoveWindow(margin, margin, rect.Width() - margin * 2, list_height);
+    const int gap = theApp.DPI(5);
+    const int desc_height = theApp.DPI(38);
+    const int button_height = theApp.DPI(14);
+    const int content_width = max(1, rect.Width() - margin * 2);
+
+    //列表占据除说明区和按钮行之外的剩余高度
+    const int list_height = max(theApp.DPI(40),
+        rect.Height() - margin - gap * 2 - desc_height - button_height - margin);
+    m_list.MoveWindow(margin, margin, content_width, list_height);
+
+    const int desc_top = margin + list_height + gap;
     if (CWnd* desc = GetDlgItem(IDC_STORE_DESC))
-        desc->MoveWindow(margin, margin + list_height + theApp.DPI(5),
-            rect.Width() - margin * 2, theApp.DPI(38));
+        desc->MoveWindow(margin, desc_top, content_width, desc_height);
+
+    const int button_top = desc_top + desc_height + gap;
+    const int refresh_width = theApp.DPI(60);
+    const int install_width = theApp.DPI(80);
+    const int close_width = theApp.DPI(50);
+    if (CWnd* refresh = GetDlgItem(IDC_STORE_REFRESH))
+        refresh->MoveWindow(margin, button_top, refresh_width, button_height);
+    if (CWnd* install = GetDlgItem(IDC_STORE_INSTALL))
+        install->MoveWindow(margin + refresh_width + theApp.DPI(8), button_top, install_width, button_height);
+    if (CWnd* close = GetDlgItem(IDCANCEL))
+        close->MoveWindow(margin + content_width - close_width, button_top, close_width, button_height);
+
+    ResizeColumns();
 }
