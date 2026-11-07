@@ -13,6 +13,42 @@
 
 namespace
 {
+    //读取 PE 的 Machine 字段：提前拒绝架构不匹配的插件，避免白重启一次
+    WORD GetPeMachineFromStore(const std::wstring& path)
+    {
+        HANDLE handle = ::CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (handle == INVALID_HANDLE_VALUE)
+            return 0;
+        BYTE buffer[4096]{};
+        DWORD read_size{};
+        const BOOL read_ok = ::ReadFile(handle, buffer, static_cast<DWORD>(sizeof(buffer)), &read_size, nullptr);
+        ::CloseHandle(handle);
+        if (!read_ok || read_size < sizeof(IMAGE_DOS_HEADER))
+            return 0;
+        const auto* dos_header = reinterpret_cast<const IMAGE_DOS_HEADER*>(buffer);
+        if (dos_header->e_magic != IMAGE_DOS_SIGNATURE)
+            return 0;
+        const DWORD nt_offset = static_cast<DWORD>(dos_header->e_lfanew);
+        if (nt_offset + sizeof(IMAGE_NT_HEADERS32) > read_size)
+            return 0;
+        const auto* nt_headers = reinterpret_cast<const IMAGE_NT_HEADERS32*>(buffer + nt_offset);
+        if (nt_headers->Signature != IMAGE_NT_SIGNATURE)
+            return 0;
+        return nt_headers->FileHeader.Machine;
+    }
+
+    WORD GetHostMachine()
+    {
+#if defined(_M_ARM64)
+        return IMAGE_FILE_MACHINE_ARM64;
+#elif defined(_M_X64)
+        return IMAGE_FILE_MACHINE_AMD64;
+#else
+        return IMAGE_FILE_MACHINE_I386;
+#endif
+    }
+
     //URLDownloadToFile 按二进制原样落盘，避免 ReadString 破坏 DLL
     bool DownloadBinaryFile(const std::wstring& url, const std::wstring& save_path)
     {
@@ -244,6 +280,18 @@ void CPluginStoreDlg::OnBnClickedStoreInstall()
         {
             ::DeleteFileW(temp_path);
             MessageBox(CCommon::LoadText(IDS_STORE_SHA_MISMATCH), nullptr, MB_ICONWARNING | MB_OK);
+            return;
+        }
+    }
+
+    //下载完成后校验实际架构：清单的 arch 可能标错，以 DLL 本身为准
+    {
+        const WORD machine = GetPeMachineFromStore(temp_path.GetString());
+        const WORD host_machine = GetHostMachine();
+        if (machine != 0 && machine != host_machine)
+        {
+            ::DeleteFileW(temp_path);
+            MessageBox(CCommon::LoadText(IDS_STORE_ARCH_MISMATCH), nullptr, MB_ICONWARNING | MB_OK);
             return;
         }
     }
