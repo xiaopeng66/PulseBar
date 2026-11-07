@@ -88,6 +88,10 @@ int PluginVersion::GetSubVersion(size_t index) const
 /////////////////////////////////////////////////////////////////////////////////////////////////////
 bool CPluginUpdateHelper::CheckForUpdate()
 {
+    //商店对话框（UI 线程）与启动更新线程可能同时进入：网络请求段必须互斥，
+    //否则两次请求互相覆盖、两次 swap 交错会让不同调用者拿到不同代际的表。
+    std::lock_guard<std::mutex> fetch_lock(m_fetch_mutex);
+
     std::wstring url;
     //插件商店版本表随主仓库发布，避免依赖额外的空仓库
     //更新源为Gitee

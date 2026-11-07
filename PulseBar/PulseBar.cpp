@@ -688,6 +688,8 @@ bool CPulseBarApp::MigrateConfigDir(bool to_program_dir, CString& message)
         ::CopyFileW(target_config.c_str(), (target_config + L".old").c_str(), FALSE);
 
     const wchar_t* const data_files[] = { L"config.ini", L"history_traffic.dat", L"history_traffic.dat.bak" };
+    //plugins 是插件的配置目录（LoadPlugins 从 exe 目录加载 DLL，本目录仅传给插件存配置）；
+    //它跟着配置走，但 exe 目录下的同名插件加载目录绝不能被迁移逻辑触碰
     const wchar_t* const data_dirs[] = { L"plugins", L"plugin-backups" };
 
     //先完整复制并逐个校验，任何一个没落到新位置就中止，绝不删旧数据

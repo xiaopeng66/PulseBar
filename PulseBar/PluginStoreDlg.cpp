@@ -154,7 +154,9 @@ void CPluginStoreDlg::RefreshList(bool force_fetch)
 
 int CPluginStoreDlg::FindLocalState(const PluginStoreItem& item) const
 {
-    const CString path = CString(theApp.m_config_dir.c_str()) + L"plugins\\" + item.file_name.c_str();
+    //插件加载自 exe 目录的 plugins\（见 CPluginManager::LoadPlugins），
+    //安装状态必须按这个目录判断，而不是随配置目录走
+    const CString path = CString(theApp.m_module_dir.c_str()) + L"plugins\\" + item.file_name.c_str();
     return (::GetFileAttributesW(path) != INVALID_FILE_ATTRIBUTES) ? 1 : 0;
 }
 
@@ -214,7 +216,8 @@ void CPluginStoreDlg::OnBnClickedStoreInstall()
         return;
     }
 
-    const CString plugin_dir = CString(theApp.m_config_dir.c_str()) + L"plugins\\";
+    //插件必须装到 exe 目录的 plugins\（LoadPlugins 从这里加载）
+    const CString plugin_dir = CString(theApp.m_module_dir.c_str()) + L"plugins\\";
     ::CreateDirectoryW(plugin_dir, nullptr);
     const CString target_path = plugin_dir + item.file_name.c_str();
     const CString temp_path = plugin_dir + item.file_name.c_str() + L".download";

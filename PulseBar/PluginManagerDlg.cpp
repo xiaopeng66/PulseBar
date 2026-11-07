@@ -379,7 +379,8 @@ void CPluginManagerDlg::OnBnClickedInstallPluginButton()
     if (file_dialog.DoModal() != IDOK)
         return;
 
-    const CString plugin_dir = CString(theApp.m_config_dir.c_str()) + L"plugins\\";
+    //插件必须装到 exe 目录的 plugins\（LoadPlugins 从这里加载）
+    const CString plugin_dir = CString(theApp.m_module_dir.c_str()) + L"plugins\\";
     ::CreateDirectoryW(plugin_dir, nullptr);
 
     const WORD host_machine = GetHostMachine();

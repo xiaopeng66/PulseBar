@@ -54,5 +54,6 @@ private:
     std::map<std::wstring, PluginVersion> m_latest_versions;    //在线获取到的每个插件的最新版本信息
     std::vector<PluginStoreItem> m_store_items;                 //同一份清单的完整字段
     mutable std::mutex m_version_mutex;     //保护 m_latest_versions / m_store_items
+    std::mutex m_fetch_mutex;               //串行化 CheckForUpdate 的网络请求段
 };
 
