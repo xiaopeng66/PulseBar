@@ -577,6 +577,15 @@ namespace
         return true;
     }
 
+    //语言文件缺少对应键时回退到英文，避免弹出空白提示
+    CString LoadMigrationText(const wchar_t* key, const wchar_t* fallback)
+    {
+        CString text = CCommon::LoadText(key);
+        if (text.IsEmpty())
+            text = fallback;
+        return text;
+    }
+
     void CopyDirectoryContents(const std::wstring& source, const std::wstring& target, int depth = 0)
     {
         if (depth > 8)      //异常目录结构兜底，避免无限递归
@@ -624,7 +633,7 @@ bool CPulseBarApp::MigrateConfigDir(bool to_program_dir, CString& message)
         catch (CException* exception)
         {
             exception->Delete();
-            message = CCommon::LoadText(IDS_CFG_DIR_CREATE_FAILED);
+            message = LoadMigrationText(IDS_CFG_DIR_CREATE_FAILED, L"Cannot create the configuration folder: <%path%>.");
             message.Replace(_T("<%path%>"), CString(m_appdata_dir.c_str()));
             return false;
         }
@@ -639,7 +648,7 @@ bool CPulseBarApp::MigrateConfigDir(bool to_program_dir, CString& message)
 
     if (!EnsureDirectoryExists(target_dir) || !IsDirectoryWritable(target_dir))
     {
-        message = CCommon::LoadText(IDS_CFG_DIR_NOT_WRITABLE);
+        message = LoadMigrationText(IDS_CFG_DIR_NOT_WRITABLE, L"Cannot move data to: <%path%>. The folder is not writable. If PulseBar is installed under Program Files, move it to a writable folder or run it as administrator.");
         message.Replace(_T("<%path%>"), CString(target_dir.c_str()));
         return false;
     }
@@ -679,7 +688,7 @@ bool CPulseBarApp::MigrateConfigDir(bool to_program_dir, CString& message)
     ini.WriteBool(L"config", L"portable_mode", to_program_dir);
     ini.Save();
 
-    message = CCommon::LoadText(IDS_CFG_DIR_MIGRATED_INFO);
+    message = LoadMigrationText(IDS_CFG_DIR_MIGRATED_INFO, L"Settings, traffic history and plugins were moved to: <%path%>. PulseBar will use the new location from now on; restarting is recommended.");
     message.Replace(_T("<%path%>"), CString(target_dir.c_str()));
     return true;
 }
