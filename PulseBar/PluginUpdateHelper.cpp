@@ -120,6 +120,8 @@ bool CPluginUpdateHelper::CheckForUpdate()
         item.download_path = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "download"));
         item.sha256 = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "sha256"));
         item.arch = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "arch"));
+        const std::string official_flag(CTinyXml2Helper::ElementAttribute(ele, "official"));
+        item.official = (official_flag == "true" || official_flag == "1");
         if (item.file_name.empty())
             return;
         latest_versions.emplace(item.file_name, item.version);

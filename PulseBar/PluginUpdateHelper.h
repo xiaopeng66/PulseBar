@@ -30,9 +30,10 @@ struct PluginStoreItem
     std::wstring display_name;
     std::wstring author;
     std::wstring description;
-    std::wstring download_path;     //相对仓库根目录
+    std::wstring download_path;     //相对仓库根目录，或完整 http(s) 链接
     std::wstring sha256;            //为空时跳过校验
     std::wstring arch;
+    bool official{ false };         //清单标记为官方插件
 };
 
 class CPluginUpdateHelper

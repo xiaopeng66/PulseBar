@@ -7,9 +7,11 @@
 
 | 插件 | 版本 | 架构 | 下载 | SHA-256 |
 | --- | --- | --- | --- | --- |
-| Magpie Taskbar | 3.12.0 | x64 | [MagpieTaskbar.dll](plugins/MagpieTaskbar.dll) | `05ccf9434da4dbad8ab9365e8f555afdf88c248a2aa5b007bbc2e5a44e92f228` |
+| Magpie Taskbar | 3.12.0 | x64 | [MagpieTaskbar.dll](https://github.com/xiaopeng66/PulseBar/releases/download/plugins-v3.12.0/MagpieTaskbar.dll) | `05ccf9434da4dbad8ab9365e8f555afdf88c248a2aa5b007bbc2e5a44e92f228` |
 
-「官方」指由本项目维护并随本仓库发布的插件；第三方插件不在本表内，请以插件自身「详细信息」中的作者链接为准。
+插件二进制放在 [插件 Release](https://github.com/xiaopeng66/PulseBar/releases/tag/plugins-v3.12.0) 里，不进仓库，避免仓库随每次插件更新膨胀。`plugins_version.xml` 的 `download` 字段直接指向 Release 资产。
+
+「官方」指由本项目维护并随本仓库发布的插件，软件插件列表会显示「官方」角标；第三方插件不在本表内，请以插件自身「详细信息」中的作者链接为准。
 
 ## 检查更新
 
@@ -49,7 +51,7 @@
 
 ## 发布新版本（维护者）
 
-1. 用新 DLL 覆盖本目录 `plugins/` 下的同名文件。
-2. 修改 `plugins_version.xml` 中该插件的 `version`。
+1. 建一个 `plugins-v<版本>` 的 Release，上传新的 DLL（插件二进制不进仓库）。
+2. 修改 `plugins_version.xml` 中该插件的 `version`、`download`（指向新 Release 资产）和 `sha256`。
 3. 同步更新本页表格的版本、SHA-256 与下载链接。
-4. 提交推送后，已安装用户下次启动或点「检查更新」即可看到提示。
+4. 提交推送后，已安装用户下次启动或点「检查更新」即可看到提示；插件列表里会显示「官方」角标。

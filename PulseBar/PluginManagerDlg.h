@@ -38,6 +38,7 @@ protected:
     {
         COL_FILE_NAME,
         COL_NAME,
+        COL_SOURCE,     //来源：官方 / 第三方
         COL_VERSION,
         COL_STATUS,
         COL_MAX

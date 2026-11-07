@@ -70,12 +70,15 @@ void CPluginManagerDlg::ResizeColumns()
     if (rect.Width() <= 0)
         return;
     const int usable = max(COL_MAX, rect.Width() - theApp.DPI(20) - 1);
-    const int width0 = max(1, usable * 3 / 10);
-    const int width1 = max(1, usable * 3 / 10);
-    const int width3 = max(1, usable * 2 / 10);
-    const int width2 = max(1, usable - width0 - width1 - width3);
+    //五列：文件名 / 名称 / 来源 / 版本 / 状态
+    const int width0 = max(1, usable * 25 / 100);
+    const int width1 = max(1, usable * 27 / 100);
+    const int source_width = max(1, usable * 12 / 100);
+    const int width3 = max(1, usable * 15 / 100);
+    const int width2 = max(1, usable - width0 - width1 - source_width - width3);
     m_list_ctrl.SetColumnWidth(COL_FILE_NAME, width0);
     m_list_ctrl.SetColumnWidth(COL_NAME, width1);
+    m_list_ctrl.SetColumnWidth(COL_SOURCE, source_width);
     m_list_ctrl.SetColumnWidth(COL_VERSION, width2);
     m_list_ctrl.SetColumnWidth(COL_STATUS, width3);
 }
@@ -134,6 +137,7 @@ BOOL CPluginManagerDlg::OnInitDialog()
     m_list_ctrl.SetExtendedStyle(LVS_EX_FULLROWSELECT | LVS_EX_LABELTIP);
     m_list_ctrl.InsertColumn(COL_FILE_NAME, CCommon::LoadText(IDS_FILE_NAME), LVCFMT_LEFT, 1);
     m_list_ctrl.InsertColumn(COL_NAME, CCommon::LoadText(IDS_PLUGIN_NAME), LVCFMT_LEFT, 1);
+    m_list_ctrl.InsertColumn(COL_SOURCE, CCommon::LoadText(TXT_STORE_COL_SOURCE), LVCFMT_LEFT, 1);
     m_list_ctrl.InsertColumn(COL_VERSION, CCommon::LoadText(IDS_VERSION), LVCFMT_LEFT, 1);
     m_list_ctrl.InsertColumn(COL_STATUS, CCommon::LoadText(IDS_STATUS), LVCFMT_LEFT, 1);
     ResizeColumns();
@@ -160,6 +164,7 @@ BOOL CPluginManagerDlg::OnInitDialog()
     m_list_ctrl.SetImageList(&m_plugin_icon_list, LVSIL_SMALL);
 
     //向列表中插入行
+    const auto store_items = theApp.m_plugin_update.GetStoreItems();     //云端清单快照，用于官方角标
     for (const auto& plugin : theApp.m_plugins.GetPlugins())
     {
         std::wstring file_name = CFilePathHelper(plugin.file_path).GetFileName();
@@ -192,6 +197,20 @@ BOOL CPluginManagerDlg::OnInitDialog()
         int index = m_list_ctrl.GetItemCount();
         m_list_ctrl.InsertItem(index, file_name.c_str(), m_list_ctrl.GetItemCount());
         m_list_ctrl.SetItemText(index, COL_NAME, plugin.Property(ITMPlugin::TMI_NAME).c_str());
+        //来源角标：只有云端清单标记 official 的插件才显示
+        {
+            bool is_official = false;
+            for (const auto& store_item : store_items)
+            {
+                if (_wcsicmp(store_item.file_name.c_str(), file_name.c_str()) == 0)
+                {
+                    is_official = store_item.official;
+                    break;
+                }
+            }
+            if (is_official)
+                m_list_ctrl.SetItemText(index, COL_SOURCE, CCommon::LoadText(TXT_STORE_OFFICIAL));
+        }
         if (plugin.state == CPluginManager::PluginState::PS_SUCCEED)
         {
             //如果插件有更新，在版本号后添加更新信息

@@ -213,7 +213,10 @@ void CPluginStoreDlg::OnBnClickedStoreInstall()
     const CString target_path = plugin_dir + item.file_name.c_str();
     const CString temp_path = plugin_dir + item.file_name.c_str() + L".download";
 
-    const std::wstring url = theApp.m_plugin_update.GetStoreBaseUrl() + item.download_path;
+    //download 可以是完整链接（GitHub Release 资产），也可以是仓库内的相对路径
+    std::wstring url = item.download_path;
+    if (url.rfind(L"http://", 0) != 0 && url.rfind(L"https://", 0) != 0)
+        url = theApp.m_plugin_update.GetStoreBaseUrl() + item.download_path;
     {
         CWaitCursor wait_cursor;
         if (!DownloadBinaryFile(url, temp_path.GetString()))

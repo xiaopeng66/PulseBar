@@ -3,7 +3,7 @@
   PulseBar 官方插件清单
 
   软件会拉取本文件：既用于「检查更新」（按 file_name + version 比对），
-  也用于插件商店列表（display_name / author / description）。
+  也用于插件商店列表（display_name / author / description / official）。
 
   字段说明：
     file_name    必填，必须与插件 DLL 文件名完全一致，用于匹配本地插件
@@ -11,11 +11,14 @@
     display_name 可选，商店里显示的名称
     author       可选，作者
     description  可选，一句话说明
-    download     可选，相对本仓库根目录的 DLL 路径（插件商店下载用）
+    download     必填，DLL 下载地址：可写完整 http(s) 链接，或相对本仓库根目录的路径
     sha256       可选，DLL 的 SHA-256，下载后校验
     arch         可选，x64 / x86 / arm64ec，留空表示通用
+    official     可选，true 表示官方插件，插件管理列表会显示「官方」角标
 
-  发布新版本时：替换 plugins/ 下的 DLL、改 version 与 sha256。
+  插件二进制放在 GitHub Release 资产里（不进仓库），发布新版本时：
+    1. 建一个 plugins-v<版本> 的 Release 并上传 DLL
+    2. 更新本条目的 version / download / sha256
 -->
 <plugins>
     <plugin
@@ -24,7 +27,8 @@
         display_name="Magpie Taskbar"
         author="xiaopeng66"
         description="任务栏 Magpie 缩放控制面板"
-        download="docs/plugins/plugins/MagpieTaskbar.dll"
+        download="https://github.com/xiaopeng66/PulseBar/releases/download/plugins-v3.12.0/MagpieTaskbar.dll"
         sha256="05ccf9434da4dbad8ab9365e8f555afdf88c248a2aa5b007bbc2e5a44e92f228"
-        arch="x64" />
+        arch="x64"
+        official="true" />
 </plugins>
