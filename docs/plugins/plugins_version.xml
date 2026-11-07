@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  PulseBar 官方插件版本表
+
+  软件（插件管理）会拉取本文件并按 file_name 与本地插件 DLL 比对版本。
+  file_name 必须与插件 DLL 的文件名完全一致；version 用点分数字（1.2.3）。
+
+  发布新版插件时只需两步：
+    1. 把新的 DLL 放进本目录的 plugins/ 下覆盖旧文件
+    2. 修改下面 <plugin> 的 version
+-->
+<plugins>
+    <plugin file_name="MagpieTaskbar.dll" version="3.12.0" />
+</plugins>

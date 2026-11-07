@@ -89,12 +89,13 @@ int PluginVersion::GetSubVersion(size_t index) const
 bool CPluginUpdateHelper::CheckForUpdate()
 {
     std::wstring url;
+    //插件商店版本表随主仓库发布，避免依赖额外的空仓库
     //更新源为Gitee
     if (theApp.m_general_data.update_source == 1)
-        url = L"https://gitee.com/xiaopeng66/PulseBarPlugins/raw/main/plugins_version.xml";
+        url = L"https://gitee.com/xiaopeng66/PulseBar/raw/main/docs/plugins/plugins_version.xml";
     //更新源为Github
     else
-        url = L"https://raw.githubusercontent.com/xiaopeng66/PulseBarPlugins/main/plugins_version.xml";
+        url = L"https://raw.githubusercontent.com/xiaopeng66/PulseBar/main/docs/plugins/plugins_version.xml";
 
     //获取url内容
     std::string version_info;
