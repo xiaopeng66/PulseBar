@@ -185,6 +185,7 @@ BEGIN_MESSAGE_MAP(CPulseBarDlg, CDialog)
     ON_COMMAND(ID_NETWORK_INFO, &CPulseBarDlg::OnNetworkInfo)
     ON_WM_CLOSE()
     ON_MESSAGE(PB_QUIT_REQUEST_MESSAGE, &CPulseBarDlg::OnQuitRequest)
+    ON_MESSAGE(WM_RESTART_FOR_PLUGIN, &CPulseBarDlg::OnRestartForPlugin)
     ON_MESSAGE(MY_WM_NOTIFYICON, &CPulseBarDlg::OnNotifyIcon)
     ON_COMMAND(ID_SHOW_NOTIFY_ICON, &CPulseBarDlg::OnShowNotifyIcon)
     ON_COMMAND(ID_NOTIFY_ICON_SHOW_SPEED, &CPulseBarDlg::OnNotifyIconShowSpeed)
@@ -3020,6 +3021,24 @@ void CPulseBarDlg::OnClose()
 LRESULT CPulseBarDlg::OnQuitRequest(WPARAM, LPARAM)
 {
     //新版本启动时请求退出：按正常关闭流程保存配置并结束进程
+    PostMessage(WM_CLOSE);
+    return 0;
+}
+
+LRESULT CPulseBarDlg::OnRestartForPlugin(WPARAM, LPARAM)
+{
+    //安装插件后重启：先关掉所有打开的对话框，再启动新实例并让本实例正常退出。
+    //延迟重启器放在独立进程里，避免本实例退出过程中新实例被单实例逻辑挡掉。
+    for (const auto& item : CBaseDialog::AllUniqueHandels())
+    {
+        if (::IsWindow(item.second))
+            ::PostMessage(item.second, WM_COMMAND, IDCANCEL, 0);
+    }
+
+    CString command;
+    command.Format(L"/c timeout /t 2 >nul & start \"\" \"%s\"", theApp.m_module_path.c_str());
+    ::ShellExecuteW(nullptr, L"open", L"cmd.exe", command, nullptr, SW_HIDE);
+
     PostMessage(WM_CLOSE);
     return 0;
 }

@@ -18,6 +18,9 @@
 #include <atomic>
 #include "OpenHardwareMonitor/OpenHardwareMonitorApi.h"
 #include "PluginManager.h"
+
+//安装插件后请求重启：主窗口收到后关闭所有对话框，再启动新实例并退出
+#define WM_RESTART_FOR_PLUGIN (WM_USER + 1011)
 #include "Nullable.hpp"
 #include "TaskBarDlgDrawCommon.h"
 #include "DllFunctions.h"

@@ -104,6 +104,7 @@ BEGIN_MESSAGE_MAP(CPluginManagerDlg, CBaseDialog)
     ON_NOTIFY(NM_CLICK, IDC_LIST1, &CPluginManagerDlg::OnNMClickList1)
     ON_BN_CLICKED(IDC_OPTINS_BUTTON, &CPluginManagerDlg::OnBnClickedOptinsButton)
     ON_BN_CLICKED(IDC_PLUGIN_INFO_BUTTON, &CPluginManagerDlg::OnBnClickedPluginInfoButton)
+    ON_BN_CLICKED(IDC_INSTALL_PLUGIN_BUTTON, &CPluginManagerDlg::OnBnClickedInstallPluginButton)
     ON_NOTIFY(NM_DBLCLK, IDC_LIST1, &CPluginManagerDlg::OnNMDblclkList1)
     ON_WM_INITMENU()
     ON_COMMAND(ID_PLUGIN_DETAIL, &CPluginManagerDlg::OnPluginDetail)
@@ -304,6 +305,109 @@ void CPluginManagerDlg::OnBnClickedPluginInfoButton()
     {
         CPluginInfoDlg dlg(m_item_selected);
         dlg.DoModal();
+    }
+}
+
+namespace
+{
+    //读取 PE 的 Machine 字段：提前拒绝架构不匹配的插件，避免白重启一次
+    WORD GetPeMachine(const CString& path)
+    {
+        HANDLE handle = ::CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (handle == INVALID_HANDLE_VALUE)
+            return 0;
+        BYTE buffer[4096]{};
+        DWORD read_size{};
+        const BOOL read_ok = ::ReadFile(handle, buffer, static_cast<DWORD>(sizeof(buffer)), &read_size, nullptr);
+        ::CloseHandle(handle);
+        if (!read_ok || read_size < sizeof(IMAGE_DOS_HEADER))
+            return 0;
+        const auto* dos_header = reinterpret_cast<const IMAGE_DOS_HEADER*>(buffer);
+        if (dos_header->e_magic != IMAGE_DOS_SIGNATURE)
+            return 0;
+        const DWORD nt_offset = static_cast<DWORD>(dos_header->e_lfanew);
+        if (nt_offset + sizeof(IMAGE_NT_HEADERS32) > read_size)
+            return 0;
+        const auto* nt_headers = reinterpret_cast<const IMAGE_NT_HEADERS32*>(buffer + nt_offset);
+        if (nt_headers->Signature != IMAGE_NT_SIGNATURE)
+            return 0;
+        return nt_headers->FileHeader.Machine;
+    }
+
+    WORD GetHostMachine()
+    {
+#if defined(_M_ARM64)
+        return IMAGE_FILE_MACHINE_ARM64;
+#elif defined(_M_X64)
+        return IMAGE_FILE_MACHINE_AMD64;
+#else
+        return IMAGE_FILE_MACHINE_I386;
+#endif
+    }
+}
+
+void CPluginManagerDlg::OnBnClickedInstallPluginButton()
+{
+    //多选需要较大的缓冲区：文件名以 \0 分隔，CFileDialog 默认缓冲不够
+    std::vector<wchar_t> file_buffer(64 * 1024, 0);
+    CFileDialog file_dialog(TRUE, L"dll", nullptr,
+        OFN_ALLOWMULTISELECT | OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_HIDEREADONLY,
+        L"*.dll||", this);
+    file_dialog.m_ofn.lpstrFile = file_buffer.data();
+    file_dialog.m_ofn.nMaxFile = static_cast<DWORD>(file_buffer.size());
+    if (file_dialog.DoModal() != IDOK)
+        return;
+
+    const CString plugin_dir = CString(theApp.m_config_dir.c_str()) + L"plugins\\";
+    ::CreateDirectoryW(plugin_dir, nullptr);
+
+    const WORD host_machine = GetHostMachine();
+    int installed = 0;
+    int failed = 0;
+    CString skipped_arch;
+    POSITION pos = file_dialog.GetStartPosition();
+    while (pos != nullptr)
+    {
+        const CString source_path = file_dialog.GetNextPathName(pos);
+        const CString file_name = CFilePathHelper(source_path.GetString()).GetFileName().c_str();
+        if (file_name.IsEmpty())
+            continue;
+
+        const WORD machine = GetPeMachine(source_path);
+        if (machine != 0 && machine != host_machine)
+        {
+            if (!skipped_arch.IsEmpty())
+                skipped_arch += L", ";
+            skipped_arch += file_name;
+            continue;
+        }
+
+        if (::CopyFileW(source_path, plugin_dir + file_name, FALSE))
+            ++installed;
+        else
+            ++failed;
+    }
+
+    CString message = CCommon::LoadTextFormat(IDS_PLUGIN_INSTALL_RESULT, { installed });
+    if (failed > 0)
+        message += L"\r\n" + CString(CCommon::LoadTextFormat(IDS_PLUGIN_INSTALL_FAILED, { failed }));
+    if (!skipped_arch.IsEmpty())
+        message += L"\r\n" + CString(CCommon::LoadTextFormat(IDS_PLUGIN_INSTALL_ARCH_SKIPPED, { skipped_arch.GetString() }));
+
+    if (installed == 0)
+    {
+        MessageBox(message, nullptr, MB_ICONWARNING | MB_OK);
+        return;
+    }
+
+    message += L"\r\n\r\n";
+    message += CCommon::LoadText(IDS_PLUGIN_INSTALL_RESTART_PROMPT);
+    if (MessageBox(message, nullptr, MB_ICONQUESTION | MB_YESNO) == IDYES)
+    {
+        //交给主窗口处理：它负责关闭所有对话框、启动新实例并退出
+        if (theApp.m_pMainWnd != nullptr && ::IsWindow(theApp.m_pMainWnd->GetSafeHwnd()))
+            ::PostMessage(theApp.m_pMainWnd->GetSafeHwnd(), WM_RESTART_FOR_PLUGIN, 0, 0);
     }
 }
 
