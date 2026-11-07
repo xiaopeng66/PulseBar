@@ -1308,8 +1308,22 @@ BOOL CTaskBarDlg::OnInitDialog()
     const HWND taskbar_parent = GetParentHwnd();
     if (!::IsWindow(taskbar_parent))
         return TRUE;
-    ::SetParent(this->m_hWnd, taskbar_parent);
-    m_connot_insert_to_task_bar = ::GetParent(m_hWnd) != taskbar_parent;
+    //SetParent 对非 WS_CHILD 的 popup 对话框设置的是 GA_PARENT 链；
+    //GetParent 只查 owner，用它判定会永远误报失败并触发重建循环。
+    //成功判定以 SetParent 返回值与 GetAncestor(GA_PARENT) 为准。
+    const HWND prev_parent = ::SetParent(this->m_hWnd, taskbar_parent);
+    m_error_code = ::GetLastError();
+    m_connot_insert_to_task_bar = prev_parent == nullptr
+        || ::GetAncestor(this->m_hWnd, GA_PARENT) != taskbar_parent;
+    if (m_connot_insert_to_task_bar)
+    {
+        CCommon::WriteLog(CCommon::IntToString(static_cast<int>(reinterpret_cast<UINT_PTR>(prev_parent)))
+            + L" SetParent failed, GA_PARENT=" +
+            CCommon::IntToString(static_cast<int>(reinterpret_cast<UINT_PTR>(
+                ::GetAncestor(this->m_hWnd, GA_PARENT)))) +
+            L" error_code=" + CCommon::IntToString(static_cast<int>(m_error_code)),
+            theApp.m_log_path.c_str());
+    }
 
     //根据已经确定的任务栏最小化窗口区域得到屏幕并获得所在屏幕的DPI（Windows 8.1及其以上）
     if (theApp.m_win_version.IsWindows8Point1OrLater())
@@ -1334,7 +1348,6 @@ BOOL CTaskBarDlg::OnInitDialog()
     m_rect.SetRectEmpty();
     m_rect.bottom = m_window_height;
     m_rect.right = m_rect.left + m_window_width;
-    m_error_code = GetLastError();
     AdjustWindowPos(true);
 
     SetBackgroundColor(theApp.m_taskbar_data.back_color);
