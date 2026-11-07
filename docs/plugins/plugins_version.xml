@@ -1,14 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  PulseBar 官方插件版本表
+  PulseBar 官方插件清单
 
-  软件（插件管理）会拉取本文件并按 file_name 与本地插件 DLL 比对版本。
-  file_name 必须与插件 DLL 的文件名完全一致；version 用点分数字（1.2.3）。
+  软件会拉取本文件：既用于「检查更新」（按 file_name + version 比对），
+  也用于插件商店列表（display_name / author / description）。
 
-  发布新版插件时只需两步：
-    1. 把新的 DLL 放进本目录的 plugins/ 下覆盖旧文件
-    2. 修改下面 <plugin> 的 version
+  字段说明：
+    file_name    必填，必须与插件 DLL 文件名完全一致，用于匹配本地插件
+    version      必填，点分数字（如 1.2.3），用于版本比较
+    display_name 可选，商店里显示的名称
+    author       可选，作者
+    description  可选，一句话说明
+    download     可选，相对本仓库根目录的 DLL 路径（插件商店下载用）
+    sha256       可选，DLL 的 SHA-256，下载后校验
+    arch         可选，x64 / x86 / arm64ec，留空表示通用
+
+  发布新版本时：替换 plugins/ 下的 DLL、改 version 与 sha256。
 -->
 <plugins>
-    <plugin file_name="MagpieTaskbar.dll" version="3.12.0" />
+    <plugin
+        file_name="MagpieTaskbar.dll"
+        version="3.12.0"
+        display_name="Magpie Taskbar"
+        author="xiaopeng66"
+        description="任务栏 Magpie 缩放控制面板"
+        download="docs/plugins/plugins/MagpieTaskbar.dll"
+        sha256="05ccf9434da4dbad8ab9365e8f555afdf88c248a2aa5b007bbc2e5a44e92f228"
+        arch="x64" />
 </plugins>

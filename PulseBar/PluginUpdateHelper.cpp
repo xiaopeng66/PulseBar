@@ -109,14 +109,40 @@ bool CPluginUpdateHelper::CheckForUpdate()
     if (doc.Parse(version_info.c_str(), version_info.size()) != tinyxml2::XML_SUCCESS || doc.RootElement() == nullptr)
         return false;       //损坏或空响应不是成功的新表，保留最后有效快照。
     std::map<std::wstring, PluginVersion> latest_versions;
+    std::vector<PluginStoreItem> store_items;
     CTinyXml2Helper::IterateChildNode(doc.RootElement(), [&](tinyxml2::XMLElement* ele) {
-        std::wstring file_name = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "file_name"));
-        std::string plugin_version(CTinyXml2Helper::ElementAttribute(ele, "version"));
-        latest_versions.emplace(std::move(file_name), PluginVersion(std::move(plugin_version)));
+        PluginStoreItem item;
+        item.file_name = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "file_name"));
+        item.version = PluginVersion(std::string(CTinyXml2Helper::ElementAttribute(ele, "version")));
+        item.display_name = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "display_name"));
+        item.author = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "author"));
+        item.description = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "description"));
+        item.download_path = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "download"));
+        item.sha256 = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "sha256"));
+        item.arch = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "arch"));
+        if (item.file_name.empty())
+            return;
+        latest_versions.emplace(item.file_name, item.version);
+        store_items.push_back(std::move(item));
     });
     std::lock_guard<std::mutex> lock(m_version_mutex);
     m_latest_versions.swap(latest_versions);
+    m_store_items.swap(store_items);
     return true;
+}
+
+std::vector<PluginStoreItem> CPluginUpdateHelper::GetStoreItems() const
+{
+    std::lock_guard<std::mutex> lock(m_version_mutex);
+    return m_store_items;
+}
+
+std::wstring CPluginUpdateHelper::GetStoreBaseUrl() const
+{
+    //清单与插件文件都随主仓库发布
+    if (theApp.m_general_data.update_source == 1)
+        return L"https://gitee.com/xiaopeng66/PulseBar/raw/main/";
+    return L"https://raw.githubusercontent.com/xiaopeng66/PulseBar/main/";
 }
 
 PluginVersion CPluginUpdateHelper::GetPluginLatestVersions(const std::wstring& file_name) const

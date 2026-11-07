@@ -1,0 +1,81 @@
+name: 提交插件到官方商店
+description: 把你的 PulseBar 插件提交到官方插件商店（经审核后上架）
+title: "[插件提交] "
+labels: ["plugin-submission"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        提交前请先阅读 [插件开发指南](https://github.com/xiaopeng66/PulseBar/blob/main/docs/plugins/development.md)。
+        提交即表示你确认该 DLL 由你本人编译或有权分发，并同意随本仓库公开发布。
+  - type: input
+    id: plugin_name
+    attributes:
+      label: 插件名称
+      placeholder: 例如 Magpie Taskbar
+    validations:
+      required: true
+  - type: input
+    id: dll_file_name
+    attributes:
+      label: DLL 文件名
+      description: 必须与将要上架的文件名完全一致，软件按此匹配
+      placeholder: 例如 MagpieTaskbar.dll
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: 版本号
+      description: 点分数字，如 1.2.3
+      placeholder: 1.2.3
+    validations:
+      required: true
+  - type: dropdown
+    id: arch
+    attributes:
+      label: 架构
+      options:
+        - x64
+        - x86
+        - arm64ec
+        - 通用（不依赖架构）
+    validations:
+      required: true
+  - type: input
+    id: host_version
+    attributes:
+      label: 支持的 PulseBar 版本
+      placeholder: 例如 1.1.0 及以上
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: 一句话说明
+      description: 会显示在插件商店列表里
+      placeholder: 任务栏 Magpie 缩放控制面板
+    validations:
+      required: true
+  - type: textarea
+    id: download_url
+    attributes:
+      label: 下载地址
+      description: 你的 Release / 仓库直链；也可以直接把 DLL 拖进本 Issue 作为附件
+      placeholder: https://github.com/你/你的仓库/releases/download/v1.2.3/YourPlugin.dll
+    validations:
+      required: true
+  - type: input
+    id: sha256
+    attributes:
+      label: SHA-256
+      description: 用 `certutil -hashfile 你的插件.dll SHA256` 计算，便于用户核对
+    validations:
+      required: true
+  - type: textarea
+    id: extra
+    attributes:
+      label: 其它说明
+      description: 依赖、已知限制、是否需要管理员权限等
+    validations:
+      required: false

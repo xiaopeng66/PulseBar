@@ -6,6 +6,7 @@
 #include "PluginManagerDlg.h"
 #include "FilePathHelper.h"
 #include "PluginInfoDlg.h"
+#include "PluginStoreDlg.h"
 #include "WIC.h"
 
 
@@ -213,8 +214,8 @@ BOOL CPluginManagerDlg::OnInitDialog()
         m_list_ctrl.SetItemText(index, COL_STATUS, status);
     }
 
-    //文档由本项目维护，不指向不存在的插件仓库或未启用的 Wiki。
-    m_plugin_download_lnk.SetURL(L"https://github.com/xiaopeng66/PulseBar/blob/main/docs/plugins/downloads.md");
+    //「更多插件下载」直接打开内置插件商店；开发指南仍指向仓库文档
+    m_plugin_download_lnk.SetLinkIsURL(false);
     m_plugin_dev_guide_lnk.SetURL(L"https://github.com/xiaopeng66/PulseBar/blob/main/docs/plugins/development.md");
     m_open_plugin_dir_lnk.SetLinkIsURL(false);
 
@@ -472,6 +473,17 @@ void CPluginManagerDlg::OnPluginDisable()
 afx_msg LRESULT CPluginManagerDlg::OnLinkClicked(WPARAM wParam, LPARAM lParam)
 {
     CWnd* pCtrl = (CWnd*)wParam;
+    //点击了「更多插件下载」：打开内置插件商店
+    if (pCtrl == &m_plugin_download_lnk)
+    {
+        CPluginStoreDlg store_dlg(this);
+        if (store_dlg.DoModal() == IDOK && store_dlg.m_restart_required)
+        {
+            if (theApp.m_pMainWnd != nullptr && ::IsWindow(theApp.m_pMainWnd->GetSafeHwnd()))
+                ::PostMessage(theApp.m_pMainWnd->GetSafeHwnd(), WM_RESTART_FOR_PLUGIN, 0, 0);
+        }
+        return 0;
+    }
     //点击了“打开插件目录”
     if (pCtrl == &m_open_plugin_dir_lnk)
     {
