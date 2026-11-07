@@ -613,6 +613,35 @@ namespace
         } while (::FindNextFileW(find_handle, &find_data));
         ::FindClose(find_handle);
     }
+
+    //递归删除目录内容（只删内容，最后尝试删除空目录本身）
+    void RemoveDirectoryContents(const std::wstring& dir, int depth = 0)
+    {
+        if (depth > 8)
+            return;
+        const std::wstring pattern = WithTrailingSlash(dir) + L"*";
+        WIN32_FIND_DATAW find_data{};
+        HANDLE find_handle = ::FindFirstFileW(pattern.c_str(), &find_data);
+        if (find_handle == INVALID_HANDLE_VALUE)
+            return;
+        do
+        {
+            if (wcscmp(find_data.cFileName, L".") == 0 || wcscmp(find_data.cFileName, L"..") == 0)
+                continue;
+            const std::wstring item = WithTrailingSlash(dir) + find_data.cFileName;
+            if (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+            {
+                RemoveDirectoryContents(item, depth + 1);
+                ::RemoveDirectoryW(item.c_str());
+            }
+            else
+            {
+                ::SetFileAttributesW(item.c_str(), FILE_ATTRIBUTE_NORMAL);
+                ::DeleteFileW(item.c_str());
+            }
+        } while (::FindNextFileW(find_handle, &find_data));
+        ::FindClose(find_handle);
+    }
 }
 
 bool CPulseBarApp::MigrateConfigDir(bool to_program_dir, CString& message)
@@ -659,13 +688,20 @@ bool CPulseBarApp::MigrateConfigDir(bool to_program_dir, CString& message)
         ::CopyFileW(target_config.c_str(), (target_config + L".old").c_str(), FALSE);
 
     const wchar_t* const data_files[] = { L"config.ini", L"history_traffic.dat", L"history_traffic.dat.bak" };
+    const wchar_t* const data_dirs[] = { L"plugins", L"plugin-backups" };
+
+    //先完整复制并逐个校验，任何一个没落到新位置就中止，绝不删旧数据
+    bool all_copied = true;
     for (const auto* file_name : data_files)
     {
         const std::wstring source_file = source_dir + file_name;
-        if (::GetFileAttributesW(source_file.c_str()) != INVALID_FILE_ATTRIBUTES)
-            ::CopyFileW(source_file.c_str(), (target_dir + file_name).c_str(), FALSE);
+        if (::GetFileAttributesW(source_file.c_str()) == INVALID_FILE_ATTRIBUTES)
+            continue;
+        const std::wstring target_file = target_dir + file_name;
+        if (!::CopyFileW(source_file.c_str(), target_file.c_str(), FALSE)
+            || ::GetFileAttributesW(target_file.c_str()) == INVALID_FILE_ATTRIBUTES)
+            all_copied = false;
     }
-    const wchar_t* const data_dirs[] = { L"plugins", L"plugin-backups" };
     for (const auto* dir_name : data_dirs)
     {
         const std::wstring source_sub = source_dir + dir_name;
@@ -675,7 +711,32 @@ bool CPulseBarApp::MigrateConfigDir(bool to_program_dir, CString& message)
         const std::wstring target_sub = target_dir + dir_name;
         ::CreateDirectoryW(target_sub.c_str(), nullptr);
         CopyDirectoryContents(source_sub, target_sub);
+        if (::GetFileAttributesW(target_sub.c_str()) == INVALID_FILE_ATTRIBUTES)
+            all_copied = false;
     }
+    if (!all_copied)
+    {
+        message = LoadMigrationText(IDS_CFG_DIR_CREATE_FAILED, L"Cannot create the configuration folder: <%path%>.");
+        message.Replace(_T("<%path%>"), CString(target_dir.c_str()));
+        return false;       //保持原目录，旧数据原样保留
+    }
+
+    //移动语义：新位置已完整接管，清理旧位置的数据，避免两个目录同时存在配置
+    for (const auto* file_name : data_files)
+    {
+        if (::GetFileAttributesW((target_dir + file_name).c_str()) != INVALID_FILE_ATTRIBUTES)
+            ::DeleteFileW((source_dir + file_name).c_str());
+    }
+    for (const auto* dir_name : data_dirs)
+    {
+        if (::GetFileAttributesW((target_dir + dir_name).c_str()) == INVALID_FILE_ATTRIBUTES)
+            continue;
+        RemoveDirectoryContents(source_dir + dir_name);
+        ::RemoveDirectoryW((source_dir + dir_name).c_str());
+    }
+    ::DeleteFileW((source_dir + L"error.log").c_str());
+    ::DeleteFileW((source_dir + L"config.ini.old").c_str());
+    ::RemoveDirectoryW(source_dir.c_str());     //仅当旧目录已空时才成功；程序目录不会为空，安全
 
     //切换运行期路径，之后的 SaveConfig 与历史保存都会落到新目录
     m_config_dir = target_dir;
@@ -688,7 +749,7 @@ bool CPulseBarApp::MigrateConfigDir(bool to_program_dir, CString& message)
     ini.WriteBool(L"config", L"portable_mode", to_program_dir);
     ini.Save();
 
-    message = LoadMigrationText(IDS_CFG_DIR_MIGRATED_INFO, L"Settings, traffic history and plugins were moved to: <%path%>. PulseBar will use the new location from now on; restarting is recommended.");
+    message = LoadMigrationText(IDS_CFG_DIR_MIGRATED_INFO, L"Settings, traffic history and plugins were moved to: <%path%>. The previous location has been cleared; restarting is recommended.");
     message.Replace(_T("<%path%>"), CString(target_dir.c_str()));
     return true;
 }

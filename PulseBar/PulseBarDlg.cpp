@@ -1267,7 +1267,14 @@ void CPulseBarDlg::ApplySettings(COptionsDlg& optionsDlg)
         CString migrate_message;
         const bool migrated = theApp.MigrateConfigDir(target_portable_mode, migrate_message);
         if (!migrated)
+        {
             optionsDlg.m_tab3_dlg.m_data.portable_mode = theApp.m_general_data.portable_mode;   //回滚，不改设置
+        }
+        else
+        {
+            //历史文件对象内部缓存了旧路径，必须同步，否则退出时仍写旧目录
+            m_history_traffic.SetFilePath(theApp.m_history_traffic_path);
+        }
         if (!migrate_message.IsEmpty())
             AfxMessageBox(migrate_message, (migrated ? MB_ICONINFORMATION : MB_ICONWARNING) | MB_OK);
     }
