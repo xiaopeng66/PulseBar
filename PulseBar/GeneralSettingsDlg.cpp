@@ -672,11 +672,8 @@ void CGeneralSettingsDlg::CollectSettings()
     m_show_all_interface_modified = (m_data.show_all_interface != theApp.m_general_data.show_all_interface);
 
     //获取数据文件保存位置的设置
+    //迁移与提示统一在 CPulseBarDlg::ApplySettings 里执行，这里只读取选择
     m_data.portable_mode = (((CButton*)GetDlgItem(IDC_SAVE_TO_PROGRAM_DIR_RADIO))->GetCheck() != 0);
-    if (m_data.portable_mode != theApp.m_general_data.portable_mode)
-    {
-        MessageBox(CCommon::LoadText(IDS_CFG_DIR_CHANGED_INFO), NULL, MB_ICONINFORMATION | MB_OK);
-    }
 
     m_data.monitor_time_span = max(MONITOR_TIME_SPAN_MIN, min(m_monitor_span_edit.GetValue(), MONITOR_TIME_SPAN_MAX));
     m_monitor_span_edit.SetValue(m_data.monitor_time_span);

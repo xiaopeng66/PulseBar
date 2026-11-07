@@ -535,6 +535,155 @@ void CPulseBarApp::SaveConfig()
     }
 }
 
+namespace
+{
+    std::wstring WithTrailingSlash(std::wstring path)
+    {
+        if (!path.empty() && path.back() != L'\\' && path.back() != L'/')
+            path += L'\\';
+        return path;
+    }
+
+    //逐级创建目录，兼容 AppData 下中间目录尚不存在的情况
+    bool EnsureDirectoryExists(const std::wstring& dir)
+    {
+        if (dir.empty())
+            return false;
+        const DWORD attributes = ::GetFileAttributesW(dir.c_str());
+        if (attributes != INVALID_FILE_ATTRIBUTES)
+            return (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+        for (size_t index = 1; index < dir.size(); ++index)
+        {
+            if (dir[index] != L'\\' && dir[index] != L'/')
+                continue;
+            const std::wstring partial = dir.substr(0, index);
+            if (partial.size() > 2)
+                ::CreateDirectoryW(partial.c_str(), nullptr);
+        }
+        if (::CreateDirectoryW(dir.c_str(), nullptr))
+            return true;
+        return ::GetLastError() == ERROR_ALREADY_EXISTS;
+    }
+
+    //写一个临时文件来确认目录可写；Program Files 等受保护目录在这里返回 false
+    bool IsDirectoryWritable(const std::wstring& dir)
+    {
+        const std::wstring probe = WithTrailingSlash(dir) + L"~pulsebar_write_probe.tmp";
+        HANDLE handle = ::CreateFileW(probe.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+            FILE_ATTRIBUTE_TEMPORARY | FILE_FLAG_DELETE_ON_CLOSE, nullptr);
+        if (handle == INVALID_HANDLE_VALUE)
+            return false;
+        ::CloseHandle(handle);
+        return true;
+    }
+
+    void CopyDirectoryContents(const std::wstring& source, const std::wstring& target, int depth = 0)
+    {
+        if (depth > 8)      //异常目录结构兜底，避免无限递归
+            return;
+        const std::wstring pattern = WithTrailingSlash(source) + L"*";
+        WIN32_FIND_DATAW find_data{};
+        HANDLE find_handle = ::FindFirstFileW(pattern.c_str(), &find_data);
+        if (find_handle == INVALID_HANDLE_VALUE)
+            return;
+        do
+        {
+            if (wcscmp(find_data.cFileName, L".") == 0 || wcscmp(find_data.cFileName, L"..") == 0)
+                continue;
+            const std::wstring source_item = WithTrailingSlash(source) + find_data.cFileName;
+            const std::wstring target_item = WithTrailingSlash(target) + find_data.cFileName;
+            if (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+            {
+                ::CreateDirectoryW(target_item.c_str(), nullptr);
+                CopyDirectoryContents(source_item, target_item, depth + 1);
+            }
+            else
+            {
+                ::CopyFileW(source_item.c_str(), target_item.c_str(), FALSE);
+            }
+        } while (::FindNextFileW(find_handle, &find_data));
+        ::FindClose(find_handle);
+    }
+}
+
+bool CPulseBarApp::MigrateConfigDir(bool to_program_dir, CString& message)
+{
+    message.Empty();
+
+    std::wstring target_dir;
+    if (to_program_dir)
+    {
+        target_dir = m_module_dir;
+    }
+    else
+    {
+        try
+        {
+            target_dir = CCommon::GetAppDataConfigDir();
+        }
+        catch (CException* exception)
+        {
+            exception->Delete();
+            message = CCommon::LoadText(IDS_CFG_DIR_CREATE_FAILED);
+            message.Replace(_T("<%path%>"), CString(m_appdata_dir.c_str()));
+            return false;
+        }
+    }
+    target_dir = WithTrailingSlash(target_dir);
+    if (target_dir.empty())
+        return false;
+
+    const std::wstring source_dir = WithTrailingSlash(m_config_dir);
+    if (_wcsicmp(target_dir.c_str(), source_dir.c_str()) == 0)
+        return true;        //同一目录，无需迁移
+
+    if (!EnsureDirectoryExists(target_dir) || !IsDirectoryWritable(target_dir))
+    {
+        message = CCommon::LoadText(IDS_CFG_DIR_NOT_WRITABLE);
+        message.Replace(_T("<%path%>"), CString(target_dir.c_str()));
+        return false;
+    }
+
+    //目标已有配置时先留一份，避免覆盖用户数据后无迹可寻
+    const std::wstring target_config = target_dir + L"config.ini";
+    if (::GetFileAttributesW(target_config.c_str()) != INVALID_FILE_ATTRIBUTES)
+        ::CopyFileW(target_config.c_str(), (target_config + L".old").c_str(), FALSE);
+
+    const wchar_t* const data_files[] = { L"config.ini", L"history_traffic.dat", L"history_traffic.dat.bak" };
+    for (const auto* file_name : data_files)
+    {
+        const std::wstring source_file = source_dir + file_name;
+        if (::GetFileAttributesW(source_file.c_str()) != INVALID_FILE_ATTRIBUTES)
+            ::CopyFileW(source_file.c_str(), (target_dir + file_name).c_str(), FALSE);
+    }
+    const wchar_t* const data_dirs[] = { L"plugins", L"plugin-backups" };
+    for (const auto* dir_name : data_dirs)
+    {
+        const std::wstring source_sub = source_dir + dir_name;
+        const DWORD attributes = ::GetFileAttributesW(source_sub.c_str());
+        if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0)
+            continue;
+        const std::wstring target_sub = target_dir + dir_name;
+        ::CreateDirectoryW(target_sub.c_str(), nullptr);
+        CopyDirectoryContents(source_sub, target_sub);
+    }
+
+    //切换运行期路径，之后的 SaveConfig 与历史保存都会落到新目录
+    m_config_dir = target_dir;
+    m_config_path = target_dir + L"config.ini";
+    m_history_traffic_path = target_dir + L"history_traffic.dat";
+    m_log_path = target_dir + L"error.log";
+
+    //global_cfg.ini 固定在程序目录，决定下次启动从哪里读取数据
+    CIniHelper ini{ m_module_dir + L"global_cfg.ini" };
+    ini.WriteBool(L"config", L"portable_mode", to_program_dir);
+    ini.Save();
+
+    message = CCommon::LoadText(IDS_CFG_DIR_MIGRATED_INFO);
+    message.Replace(_T("<%path%>"), CString(target_dir.c_str()));
+    return true;
+}
+
 void CPulseBarApp::LoadPluginDisabledSettings()
 {
     CIniHelper ini{ m_config_path };

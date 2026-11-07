@@ -174,6 +174,9 @@ public:
     void LoadLanguageConfig();
     void LoadConfig();
     void SaveConfig();
+    //把当前配置目录的数据迁移到新位置并切换运行期路径。
+    //成功返回 true（message 为迁移结果提示），失败返回 false（message 为原因）。
+    bool MigrateConfigDir(bool to_program_dir, CString& message);
     void LoadPluginDisabledSettings();
 
     void LoadGlobalConfig();

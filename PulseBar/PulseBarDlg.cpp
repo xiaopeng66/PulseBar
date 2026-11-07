@@ -1260,6 +1260,18 @@ void CPulseBarDlg::ApplySettings(COptionsDlg& optionsDlg)
 
     theApp.m_taskbar_data = optionsDlg.m_tab2_dlg.m_data;
 
+    //配置目录切换：先把现有配置、历史和插件迁移到新位置，失败则保持原目录
+    const bool target_portable_mode = optionsDlg.m_tab3_dlg.m_data.portable_mode;
+    if (target_portable_mode != theApp.m_general_data.portable_mode)
+    {
+        CString migrate_message;
+        const bool migrated = theApp.MigrateConfigDir(target_portable_mode, migrate_message);
+        if (!migrated)
+            optionsDlg.m_tab3_dlg.m_data.portable_mode = theApp.m_general_data.portable_mode;   //回滚，不改设置
+        if (!migrate_message.IsEmpty())
+            AfxMessageBox(migrate_message, (migrated ? MB_ICONINFORMATION : MB_ICONWARNING) | MB_OK);
+    }
+
     theApp.m_general_data = optionsDlg.m_tab3_dlg.m_data;
     theApp.PublishMonitorSettings(); //Publish before plugins, timers or hardware can observe this commit.
     theApp.m_cfg_data.m_notify_icon_selected = theApp.NormalizeNotifyIconSelection(optionsDlg.m_notify_icon_selected);
