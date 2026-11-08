@@ -3195,6 +3195,8 @@ afx_msg LRESULT CPulseBarDlg::OnNotifyIcon(WPARAM wParam, LPARAM lParam)
     CPoint point;
     GetCursorPos(&point);
     menu->SetDefaultItem(-1);
+    //托盘菜单不经 OnInitMenu，状态型开关的勾选要在这里补
+    CTaskBarDlg::ApplyMenuCheckStates(menu);
     UINT command{};
     {
         CFlagLocker tracking(theApp.m_tray_plugin_menu_active);

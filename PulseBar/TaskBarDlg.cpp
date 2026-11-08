@@ -1564,6 +1564,18 @@ void CTaskBarDlg::OnRButtonUp(UINT nFlags, CPoint point)
 }
 
 
+void CTaskBarDlg::ApplyMenuCheckStates(CMenu* menu)
+{
+    if (menu == nullptr)
+        return;
+    //「悬停显示监控面板」勾选 = 已启用
+    CheckMenuItemByCommand(menu, ID_SHOW_SPEED_GRAPH_TIP,
+        theApp.m_taskbar_data.show_speed_graph_tip ? MF_CHECKED : MF_UNCHECKED);
+    //「隐藏任务栏面板」勾选 = 当前已隐藏，与菜单文案的语义一致
+    CheckMenuItemByCommand(menu, ID_SHOW_TASK_BAR_WND,
+        theApp.m_cfg_data.m_show_task_bar_wnd ? MF_UNCHECKED : MF_CHECKED);
+}
+
 void CTaskBarDlg::OnInitMenu(CMenu* pMenu)
 {
     CDialogEx::OnInitMenu(pMenu);
@@ -1574,6 +1586,9 @@ void CTaskBarDlg::OnInitMenu(CMenu* pMenu)
         theApp.m_general_data.show_all_interface ? MF_GRAYED : MF_ENABLED);
     EnableMenuItemByCommand(pMenu, ID_CHECK_UPDATE,
         theApp.IsCheckingForUpdate() ? MF_GRAYED : MF_ENABLED);
+
+    //状态型开关：勾选反映当前状态（任务栏菜单与托盘菜单共用这套标记）
+    ApplyMenuCheckStates(pMenu);
 
     //设置默认菜单项
     switch (theApp.m_taskbar_data.double_click_action)
