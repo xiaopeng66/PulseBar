@@ -1518,23 +1518,20 @@ BOOL CPulseBarApp::InitInstance()
 
     //已有实例在运行时，先请求它退出，再接手单实例互斥量。
     //这样双击新版本即可完成替换，不需要用户手动退出旧实例。
-    HANDLE hMutex = nullptr;
-    for (int attempt = 0; attempt < 50; ++attempt)
+    //已有实例：只激活它（打开设置），不再杀进程重启。
+    //旧实现会请求旧实例退出再接手，导致「双击 exe」把正在运行的任务栏面板销毁重建。
+    //升级由安装器负责：NSIS 安装段会先关闭运行中的实例。
+    HANDLE hMutex = ::CreateMutex(NULL, TRUE, mutex_name);
+    if (hMutex == nullptr)
+        return FALSE;
+    if (::GetLastError() == ERROR_ALREADY_EXISTS)
     {
-        hMutex = ::CreateMutex(NULL, TRUE, mutex_name);
-        if (hMutex == nullptr)
-            break;
-        if (::GetLastError() != ERROR_ALREADY_EXISTS)
-            break;              //成功成为唯一实例
         ::CloseHandle(hMutex);
-        hMutex = nullptr;
         HWND h_existing = ::FindWindow(APP_CLASS_NAME, nullptr);
         if (h_existing != nullptr)
-            ::PostMessage(h_existing, PB_QUIT_REQUEST_MESSAGE, 0, 0);
-        ::Sleep(100);           //等待旧实例保存配置并退出
+            ::PostMessage(h_existing, PB_ACTIVATE_REQUEST_MESSAGE, 0, 0);
+        return FALSE;           //本次实例直接退出，不抢单实例锁
     }
-    if (hMutex == nullptr)
-        return FALSE;           //旧实例仍未退出：本次启动静默结束
 
     //初始化GDI+
     Gdiplus::GdiplusStartupInput gdiplusStartupInput;

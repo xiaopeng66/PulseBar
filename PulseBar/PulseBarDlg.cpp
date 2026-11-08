@@ -185,6 +185,7 @@ BEGIN_MESSAGE_MAP(CPulseBarDlg, CDialog)
     ON_COMMAND(ID_NETWORK_INFO, &CPulseBarDlg::OnNetworkInfo)
     ON_WM_CLOSE()
     ON_MESSAGE(PB_QUIT_REQUEST_MESSAGE, &CPulseBarDlg::OnQuitRequest)
+    ON_MESSAGE(PB_ACTIVATE_REQUEST_MESSAGE, &CPulseBarDlg::OnActivateRequest)
     ON_MESSAGE(WM_RESTART_FOR_PLUGIN, &CPulseBarDlg::OnRestartForPlugin)
     ON_MESSAGE(MY_WM_NOTIFYICON, &CPulseBarDlg::OnNotifyIcon)
     ON_COMMAND(ID_SHOW_NOTIFY_ICON, &CPulseBarDlg::OnShowNotifyIcon)
@@ -3030,6 +3031,13 @@ void CPulseBarDlg::OnClose()
 
     CDialog::OnClose();
 
+}
+
+LRESULT CPulseBarDlg::OnActivateRequest(WPARAM, LPARAM)
+{
+    //双击 exe 激活已有实例：打开设置面板（已打开时由 CBaseDialog 的单例逻辑前置激活）
+    PostMessage(WM_COMMAND, ID_OPTIONS2, 0);
+    return 0;
 }
 
 LRESULT CPulseBarDlg::OnQuitRequest(WPARAM, LPARAM)

@@ -36,6 +36,7 @@
 
 //用于“新版本启动时让旧实例退出”的注册消息
 constexpr UINT PB_QUIT_REQUEST_MESSAGE = WM_APP + 500;   //新版本请求旧实例退出
+constexpr UINT PB_ACTIVATE_REQUEST_MESSAGE = WM_APP + 501;   //双击 exe：请求已有实例打开设置
 
 enum class TrayPluginActionKind
 {
