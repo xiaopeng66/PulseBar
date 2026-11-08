@@ -26,6 +26,45 @@ wstring CCommon::StrToUnicode(const char* str, bool utf8)
     return result;
 }
 
+std::wstring CCommon::RepairMisdecodedText(const std::wstring& text)
+{
+    //纯 ASCII 不可能有这种乱码，直接返回
+    bool has_non_ascii{ false };
+    for (wchar_t ch : text)
+    {
+        if (ch > 0x7F)
+        {
+            has_non_ascii = true;
+            break;
+        }
+    }
+    if (!has_non_ascii)
+        return text;
+
+    //把每个字符按 ANSI 编回去，得到当初被误解码的那串 UTF-8 字节
+    const int bytes_size = ::WideCharToMultiByte(CP_ACP, 0, text.c_str(), static_cast<int>(text.size()),
+        nullptr, 0, nullptr, nullptr);
+    if (bytes_size <= 0)
+        return text;
+    std::string bytes(static_cast<size_t>(bytes_size), '\0');
+    if (::WideCharToMultiByte(CP_ACP, 0, text.c_str(), static_cast<int>(text.size()),
+        &bytes[0], bytes_size, nullptr, nullptr) <= 0)
+        return text;
+
+    //严格按 UTF-8 解码：当初是被当 UTF-8 写入的，所以必须整串合法才认为可以还原
+    const int wide_size = ::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, bytes.c_str(),
+        static_cast<int>(bytes.size()), nullptr, 0);
+    if (wide_size <= 0)
+        return text;
+    std::wstring repaired(static_cast<size_t>(wide_size), L'\0');
+    if (::MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, bytes.c_str(), static_cast<int>(bytes.size()),
+        &repaired[0], wide_size) <= 0)
+        return text;
+    if (repaired.empty() || repaired == text)
+        return text;
+    return repaired;
+}
+
 string CCommon::UnicodeToStr(const wchar_t* wstr, bool utf8)
 {
     string result;

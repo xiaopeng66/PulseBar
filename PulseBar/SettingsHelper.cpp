@@ -27,7 +27,8 @@ void CSettingsHelper::SaveFontData(const wchar_t* AppName, const FontInfo& font)
 
 void CSettingsHelper::LoadFontData(const wchar_t* AppName, FontInfo& font, const FontInfo& default_font) const
 {
-    font.name = GetString(AppName, L"font_name", default_font.name).c_str();
+    //历史版本曾把 UTF-8 语言串按 ANSI 读入并把乱码存回配置，这里无损还原
+    font.name = CCommon::RepairMisdecodedText(GetString(AppName, L"font_name", default_font.name)).c_str();
     font.size = GetInt(AppName, L"font_size", default_font.size);
     bool style[4];
     GetBoolArray(AppName, L"font_style", style, 4);
@@ -83,12 +84,40 @@ void CSettingsHelper::SaveTaskbarWndColors(const wchar_t* AppName, const wchar_t
     _WriteString(AppName, KeyName, wstring(str));
 }
 
+namespace
+{
+    //误把 UTF-8 当 ANSI 解码时，无法映射的字节会变成 '?'，这类文本已无法无损还原；
+    //它能确定是坏值（默认文本里没有 '?'），退回默认文案比显示乱码好。
+    bool HasLostByteMojibake(const std::wstring& value, const std::wstring& default_text)
+    {
+        bool has_non_ascii{ false };
+        bool has_question{ false };
+        for (wchar_t ch : value)
+        {
+            if (ch > 0x7F)
+                has_non_ascii = true;
+            if (ch == L'?')
+                has_question = true;
+        }
+        return has_non_ascii && has_question && default_text.find(L'?') == std::wstring::npos;
+    }
+}
+
 void CSettingsHelper::LoadDisplayStr(const wchar_t* AppName, DispStrings& disp_str, bool is_main_window) const
 {
     for (auto display_item : AllDisplayItems)
     {
-        std::wstring str{ CommonDisplayItem(display_item).DefaultString(is_main_window)};
+        const std::wstring default_text{ CommonDisplayItem(display_item).DefaultString(is_main_window) };
+        std::wstring str{ default_text };
         bool exist = GetString(AppName, CommonDisplayItem(display_item).GetItemIniKeyName(), str);
+        if (exist)
+        {
+            const std::wstring repaired = CCommon::RepairMisdecodedText(str);
+            if (repaired != str)
+                str = repaired;                             //能无损还原：用还原后的文本
+            else if (HasLostByteMojibake(str, default_text))
+                str = default_text;                         //有字节丢失：退回默认文本
+        }
         //主窗口只读取配置文件中存在的项，任务栏窗口读取所有项
         if (!is_main_window || exist)
             disp_str.Get(display_item) = str;

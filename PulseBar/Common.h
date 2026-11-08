@@ -15,6 +15,11 @@ public:
     static string UnicodeToStr(const wchar_t* wstr, bool utf8 = false);
 
     static wstring AsciiToUnicode(const string& str);
+
+    //修复「UTF-8 文本被按 ANSI 解码」留下的乱码：把字符串按 ACP 编码回原始字节，
+    //再按 UTF-8 解码；能成功解码且内容不同，说明它本来是 UTF-8，返回还原后的文本。
+    //无法还原时原样返回，调用方不需要额外判断。
+    static std::wstring RepairMisdecodedText(const std::wstring& text);
     static string AsciiToStr(const std::wstring& wstr);
 
     static void StringNormalize(std::string& str);
