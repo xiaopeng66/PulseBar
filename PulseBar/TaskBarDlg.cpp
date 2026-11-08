@@ -1545,24 +1545,58 @@ void CTaskBarDlg::OnRButtonUp(UINT nFlags, CPoint point)
     if (!::IsWindow(source_hwnd)) return;
     CPoint cursor;
     GetCursorPos(&cursor);
-    UINT command{};
+    //开关型菜单项点击后原位重开，方便连续调整；动作型照常关闭
+    for (;;)
     {
-        CFlagLocker tracking(theApp.m_tray_plugin_menu_active);
-        command=menu->TrackPopupMenu(TPM_LEFTALIGN | TPM_RIGHTBUTTON | TPM_RETURNCMD,
-            cursor.x,cursor.y,this);
-    }
-    if (!::IsWindow(source_hwnd)) return;
-    m_menu_popuped=false;
-    if (command==0)
+        if (!::IsWindow(source_hwnd))
+            return;
+        ApplyMenuCheckStates(menu);
+        UINT command{};
+        {
+            CFlagLocker tracking(theApp.m_tray_plugin_menu_active);
+            command=menu->TrackPopupMenu(TPM_LEFTALIGN | TPM_RIGHTBUTTON | TPM_RETURNCMD,
+                cursor.x,cursor.y,this);
+        }
+        if (!::IsWindow(source_hwnd))
+            return;
+        if (command==0)
+        {
+            m_menu_popuped=false;
+            return;
+        }
+        if (IsMenuToggleCommand(command))
+        {
+            //开关型：同步执行，重开时勾选已更新；这类命令不会销毁当前窗口
+            ::SendMessage(source_hwnd,WM_COMMAND,command,0);
+            ::Sleep(20);        //让菜单完全消失再重开，减少重影
+            continue;
+        }
+        //动作型：在菜单循环外异步派发，不让模态设置/主题重建删除当前回调栈的窗口
+        if ((command>=ID_PLUGIN_COMMAND_START && command<=ID_PLUGIN_COMMAND_MAX)
+            || (command>=ID_SHOW_PLUGIN_ITEM_START && command<=ID_SHOW_PLUGIN_ITEM_MAX))
+            ::PostMessage(source_hwnd,WM_COMMAND,command,0);
+        else if (theApp.m_pMainWnd != nullptr && ::IsWindow(theApp.m_pMainWnd->GetSafeHwnd()))
+            ::PostMessage(theApp.m_pMainWnd->GetSafeHwnd(),WM_COMMAND,command,0);
+        m_menu_popuped=false;
         return;
-    if ((command>=ID_PLUGIN_COMMAND_START && command<=ID_PLUGIN_COMMAND_MAX)
-        || (command>=ID_SHOW_PLUGIN_ITEM_START && command<=ID_SHOW_PLUGIN_ITEM_MAX))
-        ::PostMessage(source_hwnd,WM_COMMAND,command,0);
-    else if (theApp.m_pMainWnd != nullptr && ::IsWindow(theApp.m_pMainWnd->GetSafeHwnd()))
-        ::PostMessage(theApp.m_pMainWnd->GetSafeHwnd(),WM_COMMAND,command,0);
-    //菜单循环已退出。使用异步命令，不让模态设置/主题重建删除当前回调栈的窗口。
+    }
 }
 
+
+bool CTaskBarDlg::IsMenuToggleCommand(UINT command)
+{
+    //开关型菜单项：点击后菜单保持打开，方便连续切换；动作型（打开窗口/执行命令）照常关闭
+    switch (command)
+    {
+    case ID_SELETE_CONNECTION:
+    case ID_SELECT_ALL_CONNECTION:
+    case ID_SHOW_SPEED_GRAPH_TIP:
+    case ID_SHOW_TASK_BAR_WND:
+        return true;
+    default:
+        return false;
+    }
+}
 
 void CTaskBarDlg::ApplyMenuCheckStates(CMenu* menu)
 {

@@ -245,7 +245,8 @@ public:
     //afx_msg void OnSetBackgroundColor();
     //afx_msg void OnSetTextColor();
     afx_msg void OnInitMenu(CMenu* pMenu);
-    static void ApplyMenuCheckStates(CMenu* menu);   //同步状态型开关的勾选（任务栏/托盘菜单共用）
+    static void ApplyMenuCheckStates(CMenu* menu);
+    static bool IsMenuToggleCommand(UINT command);   //点击后菜单应保持打开的开关型命令   //同步状态型开关的勾选（任务栏/托盘菜单共用）
     virtual BOOL PreTranslateMessage(MSG* pMsg);
     //afx_msg void OnSetFont();
     afx_msg void OnMouseMove(UINT nFlags, CPoint point);
