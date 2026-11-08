@@ -168,7 +168,6 @@ public:
     afx_msg void OnNetworkInfo();
     afx_msg void OnClose();
     afx_msg LRESULT OnQuitRequest(WPARAM, LPARAM);
-    afx_msg LRESULT OnActivateRequest(WPARAM, LPARAM);
     afx_msg LRESULT OnRestartForPlugin(WPARAM, LPARAM);
     virtual BOOL OnCommand(WPARAM wParam, LPARAM lParam);
     virtual BOOL PreTranslateMessage(MSG* pMsg);

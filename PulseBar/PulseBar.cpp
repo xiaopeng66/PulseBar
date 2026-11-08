@@ -1518,8 +1518,8 @@ BOOL CPulseBarApp::InitInstance()
 
     //已有实例在运行时，先请求它退出，再接手单实例互斥量。
     //这样双击新版本即可完成替换，不需要用户手动退出旧实例。
-    //已有实例：只激活它（打开设置），不再杀进程重启。
-    //旧实现会请求旧实例退出再接手，导致「双击 exe」把正在运行的任务栏面板销毁重建。
+    //已有实例在运行：本次启动静默退出，对已运行实例不做任何动作。
+    //（不杀进程、不发消息、不弹窗——双击 exe 时用户不应看到任何变化）
     //升级由安装器负责：NSIS 安装段会先关闭运行中的实例。
     HANDLE hMutex = ::CreateMutex(NULL, TRUE, mutex_name);
     if (hMutex == nullptr)
@@ -1527,10 +1527,7 @@ BOOL CPulseBarApp::InitInstance()
     if (::GetLastError() == ERROR_ALREADY_EXISTS)
     {
         ::CloseHandle(hMutex);
-        HWND h_existing = ::FindWindow(APP_CLASS_NAME, nullptr);
-        if (h_existing != nullptr)
-            ::PostMessage(h_existing, PB_ACTIVATE_REQUEST_MESSAGE, 0, 0);
-        return FALSE;           //本次实例直接退出，不抢单实例锁
+        return FALSE;
     }
 
     //初始化GDI+
