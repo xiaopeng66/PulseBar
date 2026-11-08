@@ -76,6 +76,27 @@ static bool IsPluginItemValid(IPluginItem* item)
     }
 }
 
+void CPluginManager::RollbackCrashedPlugin(PluginInfo& info)
+{
+    //插件初始化中途崩溃：把它已经注册的显示项从全局表撤掉，
+    //否则采样线程/菜单会继续访问这些悬挂指针。
+    for (IPluginItem* item : info.plugin_items)
+    {
+        for (auto iter = m_plugins.begin(); iter != m_plugins.end(); ++iter)
+        {
+            if (*iter == item)
+            {
+                m_plugins.erase(iter);
+                break;
+            }
+        }
+        m_plguin_item_map.erase(item);
+    }
+    info.plugin_items.clear();
+    info.plugin = nullptr;
+    info.state = PluginState::PS_INSTANCE_NULL;
+}
+
 void CPluginManager::LoadPlugins()
 {
     //从plugins目录下加载插件
@@ -118,6 +139,10 @@ void CPluginManager::LoadPlugins()
             plugin_info.error_code = GetLastError();
             continue;
         }
+        //插件代码运行在宿主进程内：GetInstance / GetAPIVersion / GetItem / GetInfo
+        //里的访问冲突是 SEH。工程已启用 /EHa，catch(...) 才能捕获，否则直接终止进程。
+        try
+        {
         //创建插件对象
         plugin_info.plugin = TMPluginGetInstance();
         if (plugin_info.plugin == nullptr)
@@ -188,6 +213,24 @@ void CPluginManager::LoadPlugins()
             wchar_t log_text[256];
             swprintf_s(log_text, L"插件“%s”有 %d 个显示项目缺少 GetItemId()/GetItemName()/GetItemLableText() 的返回值，已跳过。",
                 plugin_info.Property(ITMPlugin::TMI_NAME).c_str(), invalid_item_count);
+            CCommon::WriteLog(log_text, theApp.m_log_path.c_str());
+        }
+        }
+        catch (CException* exception)
+        {
+            exception->Delete();
+            RollbackCrashedPlugin(plugin_info);
+            CString log_text;
+            log_text.Format(_T("Plugin %s threw an MFC exception during load; unloaded for this session."),
+                file_name.c_str());
+            CCommon::WriteLog(log_text, theApp.m_log_path.c_str());
+        }
+        catch (...)
+        {
+            RollbackCrashedPlugin(plugin_info);
+            CString log_text;
+            log_text.Format(_T("Plugin %s crashed during load (SEH/unknown); unloaded for this session."),
+                file_name.c_str());
             CCommon::WriteLog(log_text, theApp.m_log_path.c_str());
         }
     }

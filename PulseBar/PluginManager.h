@@ -37,6 +37,7 @@ public:
     CPluginManager();
     ~CPluginManager();
     void LoadPlugins();
+    void RollbackCrashedPlugin(PluginInfo& info);
 
     const std::vector<IPluginItem*>& GetPluginItems() const;
     const std::vector<PluginInfo>& GetPlugins() const;
