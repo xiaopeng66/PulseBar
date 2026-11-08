@@ -13,6 +13,10 @@
 
 namespace
 {
+#ifndef IMAGE_FILE_MACHINE_ARM64EC
+#define IMAGE_FILE_MACHINE_ARM64EC 0xA641
+#endif
+
     //读取 PE 的 Machine 字段：提前拒绝架构不匹配的插件，避免白重启一次
     WORD GetPeMachineFromStore(const std::wstring& path)
     {
@@ -40,13 +44,41 @@ namespace
 
     WORD GetHostMachine()
     {
-#if defined(_M_ARM64)
+#if defined(_M_ARM64EC)
+        return IMAGE_FILE_MACHINE_ARM64EC;
+#elif defined(_M_ARM64)
         return IMAGE_FILE_MACHINE_ARM64;
 #elif defined(_M_X64)
         return IMAGE_FILE_MACHINE_AMD64;
 #else
         return IMAGE_FILE_MACHINE_I386;
 #endif
+    }
+
+    //ARM64EC 进程可加载 ARM64EC 与 ARM64 插件（也可经 CHPE 加载 AMD64）；
+    //取得 Machine 为 0（非 PE 或读头失败）时交由加载期判定，不在这里拦截。
+    bool IsPluginArchCompatible(WORD machine, WORD host)
+    {
+        if (machine == 0 || machine == host)
+            return true;
+#if defined(_M_ARM64EC)
+        if (machine == IMAGE_FILE_MACHINE_ARM64 || machine == IMAGE_FILE_MACHINE_AMD64)
+            return true;
+#endif
+        return false;
+    }
+
+    //清单来自网络，file_name 必须是纯文件名：防止 "..\\x.dll" 之类穿越到插件目录之外
+    bool IsSafePluginFileName(const CString& declared_name, CString& safe_name)
+    {
+        safe_name = CFilePathHelper(declared_name.GetString()).GetFileName().c_str();
+        if (safe_name.IsEmpty() || safe_name.CompareNoCase(declared_name) != 0)
+            return false;   // 含路径部分（GetFileName 提取后与原值不同）
+        if (safe_name == L"." || safe_name == L"..")
+            return false;
+        if (safe_name.FindOneOf(L"\\/:*?\"<>|") >= 0)
+            return false;
+        return true;
     }
 
     //URLDownloadToFile 按二进制原样落盘，避免 ReadString 破坏 DLL
@@ -123,6 +155,7 @@ BEGIN_MESSAGE_MAP(CPluginStoreDlg, CBaseDialog)
     ON_BN_CLICKED(IDC_STORE_REFRESH, &CPluginStoreDlg::OnBnClickedStoreRefresh)
     ON_BN_CLICKED(IDC_STORE_INSTALL, &CPluginStoreDlg::OnBnClickedStoreInstall)
     ON_NOTIFY(NM_CLICK, IDC_STORE_LIST, &CPluginStoreDlg::OnNMClickStoreList)
+    ON_NOTIFY(LVN_ITEMCHANGED, IDC_STORE_LIST, &CPluginStoreDlg::OnLvnItemchangedStoreList)
     ON_NOTIFY(NM_DBLCLK, IDC_STORE_LIST, &CPluginStoreDlg::OnNMDblclkStoreList)
     ON_WM_SIZE()
 END_MESSAGE_MAP()
@@ -229,9 +262,21 @@ void CPluginStoreDlg::OnNMClickStoreList(NMHDR* pNMHDR, LRESULT* pResult)
     *pResult = 0;
 }
 
+void CPluginStoreDlg::OnLvnItemchangedStoreList(NMHDR* pNMHDR, LRESULT* pResult)
+{
+    //键盘改选也要刷新说明区，不能只依赖鼠标点击
+    const auto* notify = reinterpret_cast<NMLISTVIEW*>(pNMHDR);
+    if ((notify->uChanged & LVIF_STATE) && (notify->uNewState & LVIS_SELECTED))
+        UpdateDescription();
+    *pResult = 0;
+}
+
 void CPluginStoreDlg::OnNMDblclkStoreList(NMHDR* pNMHDR, LRESULT* pResult)
 {
-    OnBnClickedStoreInstall();
+    //空白处双击（iItem == -1）不触发安装
+    const auto* activate = reinterpret_cast<NMITEMACTIVATE*>(pNMHDR);
+    if (activate->iItem >= 0)
+        OnBnClickedStoreInstall();
     *pResult = 0;
 }
 
@@ -252,11 +297,19 @@ void CPluginStoreDlg::OnBnClickedStoreInstall()
         return;
     }
 
+    //清单来自网络：文件名先归一化校验，防止路径穿越写到插件目录之外
+    CString safe_name;
+    if (!IsSafePluginFileName(item.file_name.c_str(), safe_name))
+    {
+        MessageBox(CCommon::LoadText(IDS_STORE_INVALID_NAME), nullptr, MB_ICONWARNING | MB_OK);
+        return;
+    }
+
     //插件必须装到 exe 目录的 plugins\（LoadPlugins 从这里加载）
     const CString plugin_dir = CString(theApp.m_module_dir.c_str()) + L"plugins\\";
     ::CreateDirectoryW(plugin_dir, nullptr);
-    const CString target_path = plugin_dir + item.file_name.c_str();
-    const CString temp_path = plugin_dir + item.file_name.c_str() + L".download";
+    const CString target_path = plugin_dir + safe_name;
+    const CString temp_path = plugin_dir + safe_name + L".download";
 
     //download 可以是完整链接（GitHub Release 资产），也可以是仓库内的相对路径
     std::wstring url = item.download_path;
@@ -287,8 +340,7 @@ void CPluginStoreDlg::OnBnClickedStoreInstall()
     //下载完成后校验实际架构：清单的 arch 可能标错，以 DLL 本身为准
     {
         const WORD machine = GetPeMachineFromStore(temp_path.GetString());
-        const WORD host_machine = GetHostMachine();
-        if (machine != 0 && machine != host_machine)
+        if (!IsPluginArchCompatible(machine, GetHostMachine()))
         {
             ::DeleteFileW(temp_path);
             MessageBox(CCommon::LoadText(IDS_STORE_ARCH_MISMATCH), nullptr, MB_ICONWARNING | MB_OK);
@@ -296,9 +348,16 @@ void CPluginStoreDlg::OnBnClickedStoreInstall()
         }
     }
 
-    //旧文件删不掉说明正被程序加载，此时覆盖会失败：给出准确原因，不要误报成网络问题
+    //已存在同名插件：覆盖前必须确认，避免误操作替换掉正在用的版本
     if (::GetFileAttributesW(target_path) != INVALID_FILE_ATTRIBUTES)
     {
+        CString confirm = CCommon::LoadTextFormat(IDS_STORE_OVERWRITE_PROMPT, { safe_name.GetString() });
+        if (MessageBox(confirm, nullptr, MB_ICONQUESTION | MB_YESNO) != IDYES)
+        {
+            ::DeleteFileW(temp_path);
+            return;
+        }
+        //删不掉说明正被程序加载，此时覆盖会失败：给出准确原因，不要误报成网络问题
         ::DeleteFileW(target_path);
         if (::GetFileAttributesW(target_path) != INVALID_FILE_ATTRIBUTES)
         {
@@ -316,7 +375,7 @@ void CPluginStoreDlg::OnBnClickedStoreInstall()
 
     m_list.SetItemText(index, 3, CCommon::LoadText(TXT_STORE_STATUS_INSTALLED));
 
-    CString message = CCommon::LoadTextFormat(IDS_STORE_INSTALL_SUCCESS, { item.file_name.c_str() });
+    CString message = CCommon::LoadTextFormat(IDS_STORE_INSTALL_SUCCESS, { safe_name.GetString() });
     message += L"\r\n\r\n";
     message += CCommon::LoadText(IDS_PLUGIN_INSTALL_RESTART_PROMPT);
     if (MessageBox(message, nullptr, MB_ICONQUESTION | MB_YESNO) == IDYES)
@@ -334,7 +393,10 @@ void CPluginStoreDlg::ResizeColumns()
     m_list.GetClientRect(&rect);
     if (rect.Width() <= 0)
         return;
-    const int usable = max(1, rect.Width() - theApp.DPI(20) - 1);
+    CRect unit_dlu(0, 0, 1, 1);
+    MapDialogRect(&unit_dlu);
+    const int unit_x = max(1, unit_dlu.Width());
+    const int usable = max(1, rect.Width() - unit_x * 20 - 1);
     const int width1 = usable * 18 / 100;      //版本
     const int width2 = usable * 25 / 100;      //作者
     const int width3 = usable * 18 / 100;      //状态
@@ -353,14 +415,31 @@ void CPluginStoreDlg::OnSize(UINT nType, int cx, int cy)
 
     CRect rect;
     GetClientRect(&rect);
-    const int margin = theApp.DPI(7);
-    const int gap = theApp.DPI(5);
-    const int desc_height = theApp.DPI(38);
-    const int button_height = theApp.DPI(14);
+
+    //模板尺寸是 DLU，必须经 MapDialogRect 换算成像素；
+    //直接当 px 用会把按钮压到低于字体行高（文字被裁）
+    auto to_px = [this](int width_dlu, int height_dlu) {
+        CRect r(0, 0, width_dlu, height_dlu);
+        MapDialogRect(&r);
+        return CSize(max(1, r.Width()), max(1, r.Height()));
+    };
+    const CSize margin_size = to_px(7, 7);
+    const CSize gap_size = to_px(1, 5);
+    const CSize desc_size = to_px(1, 38);
+    const CSize button_size = to_px(1, 14);
+    const CSize refresh_size = to_px(60, 1);
+    const CSize install_size = to_px(80, 1);
+    const CSize close_size = to_px(50, 1);
+    const CSize button_gap = to_px(8, 1);
+
+    const int margin = margin_size.cx;
+    const int gap = gap_size.cy;
+    const int desc_height = desc_size.cy;
+    const int button_height = button_size.cy;
     const int content_width = max(1, rect.Width() - margin * 2);
 
     //列表占据除说明区和按钮行之外的剩余高度
-    const int list_height = max(theApp.DPI(40),
+    const int list_height = max(button_height * 3,
         rect.Height() - margin - gap * 2 - desc_height - button_height - margin);
     m_list.MoveWindow(margin, margin, content_width, list_height);
 
@@ -369,15 +448,14 @@ void CPluginStoreDlg::OnSize(UINT nType, int cx, int cy)
         desc->MoveWindow(margin, desc_top, content_width, desc_height);
 
     const int button_top = desc_top + desc_height + gap;
-    const int refresh_width = theApp.DPI(60);
-    const int install_width = theApp.DPI(80);
-    const int close_width = theApp.DPI(50);
     if (CWnd* refresh = GetDlgItem(IDC_STORE_REFRESH))
-        refresh->MoveWindow(margin, button_top, refresh_width, button_height);
+        refresh->MoveWindow(margin, button_top, refresh_size.cx, button_height);
     if (CWnd* install = GetDlgItem(IDC_STORE_INSTALL))
-        install->MoveWindow(margin + refresh_width + theApp.DPI(8), button_top, install_width, button_height);
+        install->MoveWindow(margin + refresh_size.cx + button_gap.cx, button_top,
+            install_size.cx, button_height);
     if (CWnd* close = GetDlgItem(IDCANCEL))
-        close->MoveWindow(margin + content_width - close_width, button_top, close_width, button_height);
+        close->MoveWindow(margin + content_width - close_size.cx, button_top,
+            close_size.cx, button_height);
 
     ResizeColumns();
 }

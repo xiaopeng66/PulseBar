@@ -43,6 +43,14 @@ body:
     validations:
       required: true
   - type: input
+    id: author
+    attributes:
+      label: 作者署名
+      description: 上架后显示在插件商店的「作者」列
+      placeholder: 你的昵称或 GitHub 用户名
+    validations:
+      required: true
+  - type: input
     id: host_version
     attributes:
       label: 支持的 PulseBar 版本
@@ -76,6 +84,6 @@ body:
     id: extra
     attributes:
       label: 其它说明
-      description: 依赖、已知限制、是否需要管理员权限等
+      description: 依赖、已知限制、是否需要管理员权限等。`official`（官方标记）由维护者在上架时决定，无需在此填写。
     validations:
       required: false

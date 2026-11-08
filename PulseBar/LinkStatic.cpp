@@ -42,6 +42,10 @@ BEGIN_MESSAGE_MAP(CLinkStatic, CStatic)
 	ON_WM_MOUSELEAVE()
 	ON_WM_SETCURSOR()
 	ON_WM_PAINT()
+	ON_WM_KEYDOWN()
+	ON_WM_GETDLGCODE()
+	ON_WM_SETFOCUS()
+	ON_WM_KILLFOCUS()
 END_MESSAGE_MAP()
 
 
@@ -65,9 +69,8 @@ void CLinkStatic::OnMouseMove(UINT nFlags, CPoint point)
 }
 
 
-void CLinkStatic::OnLButtonUp(UINT nFlags, CPoint point)
+void CLinkStatic::Activate()
 {
-	// TODO: 在此添加消息处理程序代码和/或调用默认值
 	if (m_link_is_url)
 	{
 		if (!m_strURL.IsEmpty())
@@ -79,6 +82,39 @@ void CLinkStatic::OnLButtonUp(UINT nFlags, CPoint point)
 		if (pParent != nullptr)
 			pParent->SendMessage(WM_LINK_CLICKED, (WPARAM)this);
 	}
+}
+
+void CLinkStatic::OnLButtonUp(UINT nFlags, CPoint point)
+{
+	Activate();
+}
+
+UINT CLinkStatic::OnGetDlgCode()
+{
+	//让控件在 Tab 聚焦后能收到 Enter/空格
+	return DLGC_WANTCHARS | DLGC_WANTARROWS;
+}
+
+void CLinkStatic::OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags)
+{
+	if (nChar == VK_RETURN || nChar == VK_SPACE)
+	{
+		Activate();
+		return;
+	}
+	CStatic::OnKeyDown(nChar, nRepCnt, nFlags);
+}
+
+void CLinkStatic::OnSetFocus(CWnd* pOldWnd)
+{
+	CStatic::OnSetFocus(pOldWnd);
+	Invalidate();       //绘制焦点提示
+}
+
+void CLinkStatic::OnKillFocus(CWnd* pNewWnd)
+{
+	CStatic::OnKillFocus(pNewWnd);
+	Invalidate();
 }
 
 
@@ -164,7 +200,7 @@ void CLinkStatic::PreSubclassWindow()
 {
 	// TODO: 在此添加专用代码和/或调用基类
 	DWORD dwStyle = GetStyle();
-	::SetWindowLong(GetSafeHwnd(), GWL_STYLE, dwStyle | SS_NOTIFY);
+	::SetWindowLong(GetSafeHwnd(), GWL_STYLE, dwStyle | SS_NOTIFY | WS_TABSTOP);
 
 	CStatic::PreSubclassWindow();
 }

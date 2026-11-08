@@ -24,6 +24,7 @@ public:
     afx_msg void OnBnClickedStoreRefresh();
     afx_msg void OnBnClickedStoreInstall();
     afx_msg void OnNMClickStoreList(NMHDR* pNMHDR, LRESULT* pResult);
+    afx_msg void OnLvnItemchangedStoreList(NMHDR* pNMHDR, LRESULT* pResult);
     afx_msg void OnNMDblclkStoreList(NMHDR* pNMHDR, LRESULT* pResult);
     afx_msg void OnSize(UINT nType, int cx, int cy);
 

@@ -41,7 +41,12 @@ protected:
 	afx_msg BOOL OnSetCursor(CWnd* pWnd, UINT nHitTest, UINT message);
 public:
 	afx_msg void OnPaint();
+	afx_msg void OnKeyDown(UINT nChar, UINT nRepCnt, UINT nFlags);
+	afx_msg UINT OnGetDlgCode();
+	afx_msg void OnSetFocus(CWnd* pOldWnd);
+	afx_msg void OnKillFocus(CWnd* pNewWnd);
 	virtual void PreSubclassWindow();
+	void Activate();
 };
 
 

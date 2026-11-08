@@ -94,12 +94,46 @@ bool CPluginManagerDlg::InitializeControls()
         { CtrlTextInfo::L4, IDC_PLUGIN_INFO_BUTTON, CtrlTextInfo::W32 },
         { CtrlTextInfo::L3, IDC_OPTINS_BUTTON, CtrlTextInfo::W32 }
     });
+    //按文本加宽后可能越过安装按钮（日语/韩语等长文案）：重排安装按钮，避免重叠
+    RepositionInstallButton();
     RepositionTextBasedControls({
         { CtrlTextInfo::L4, IDC_PLUGIN_DOWNLOAD_STATIC },
         { CtrlTextInfo::L3, IDC_PLUGIN_DEV_GUID_STATIC },
         { CtrlTextInfo::L2, IDC_OPEN_PLUGIN_DIR_STATIC }
     });
     return true;
+}
+
+void CPluginManagerDlg::RepositionInstallButton()
+{
+    CWnd* options = GetDlgItem(IDC_OPTINS_BUTTON);
+    CWnd* install = GetDlgItem(IDC_INSTALL_PLUGIN_BUTTON);
+    if (options == nullptr || install == nullptr)
+        return;
+
+    CRect options_rect;
+    CRect install_rect;
+    options->GetWindowRect(&options_rect);
+    install->GetWindowRect(&install_rect);
+    ScreenToClient(&options_rect);
+    ScreenToClient(&install_rect);
+
+    const int gap = theApp.DPI(8);
+    const int min_left = options_rect.right + gap;
+    if (install_rect.left >= min_left)
+        return;     //没有重叠，保持资源里的位置
+
+    int right = install_rect.right + (min_left - install_rect.left);
+    if (CWnd* close = GetDlgItem(IDCANCEL))
+    {
+        CRect close_rect;
+        close->GetWindowRect(&close_rect);
+        ScreenToClient(&close_rect);
+        if (right + gap > close_rect.left)
+            right = close_rect.left - gap;      //会撞关闭按钮时压缩安装按钮宽度
+    }
+    if (right > min_left)
+        install->MoveWindow(min_left, install_rect.top, right - min_left, install_rect.Height());
 }
 
 
@@ -109,6 +143,7 @@ BEGIN_MESSAGE_MAP(CPluginManagerDlg, CBaseDialog)
     ON_BN_CLICKED(IDC_OPTINS_BUTTON, &CPluginManagerDlg::OnBnClickedOptinsButton)
     ON_BN_CLICKED(IDC_PLUGIN_INFO_BUTTON, &CPluginManagerDlg::OnBnClickedPluginInfoButton)
     ON_BN_CLICKED(IDC_INSTALL_PLUGIN_BUTTON, &CPluginManagerDlg::OnBnClickedInstallPluginButton)
+    ON_NOTIFY(LVN_ITEMCHANGED, IDC_LIST1, &CPluginManagerDlg::OnLvnItemchangedList1)
     ON_NOTIFY(NM_DBLCLK, IDC_LIST1, &CPluginManagerDlg::OnNMDblclkList1)
     ON_WM_INITMENU()
     ON_COMMAND(ID_PLUGIN_DETAIL, &CPluginManagerDlg::OnPluginDetail)
@@ -260,6 +295,18 @@ BOOL CPluginManagerDlg::OnInitDialog()
 }
 
 
+void CPluginManagerDlg::OnLvnItemchangedList1(NMHDR* pNMHDR, LRESULT* pResult)
+{
+    //键盘改选也要同步选中项，否则「详情/选项/禁用」会作用到上一次鼠标选中的行
+    const auto* notify = reinterpret_cast<LPNMLISTVIEW>(pNMHDR);
+    if ((notify->uChanged & LVIF_STATE) != 0 && (notify->uNewState & LVIS_SELECTED) != 0)
+    {
+        m_item_selected = notify->iItem;
+        EnableControl();
+    }
+    *pResult = 0;
+}
+
 void CPluginManagerDlg::OnNMRClickList1(NMHDR* pNMHDR, LRESULT* pResult)
 {
     LPNMITEMACTIVATE pNMItemActivate = reinterpret_cast<LPNMITEMACTIVATE>(pNMHDR);
@@ -330,6 +377,10 @@ void CPluginManagerDlg::OnBnClickedPluginInfoButton()
 
 namespace
 {
+#ifndef IMAGE_FILE_MACHINE_ARM64EC
+#define IMAGE_FILE_MACHINE_ARM64EC 0xA641
+#endif
+
     //读取 PE 的 Machine 字段：提前拒绝架构不匹配的插件，避免白重启一次
     WORD GetPeMachine(const CString& path)
     {
@@ -357,13 +408,28 @@ namespace
 
     WORD GetHostMachine()
     {
-#if defined(_M_ARM64)
+#if defined(_M_ARM64EC)
+        return IMAGE_FILE_MACHINE_ARM64EC;
+#elif defined(_M_ARM64)
         return IMAGE_FILE_MACHINE_ARM64;
 #elif defined(_M_X64)
         return IMAGE_FILE_MACHINE_AMD64;
 #else
         return IMAGE_FILE_MACHINE_I386;
 #endif
+    }
+
+    //ARM64EC 进程可加载 ARM64EC 与 ARM64 插件（也可经 CHPE 加载 AMD64）；
+    //Machine 为 0 表示非 PE 或读头失败，交由加载期判定。
+    bool IsPluginArchCompatible(WORD machine, WORD host)
+    {
+        if (machine == 0 || machine == host)
+            return true;
+#if defined(_M_ARM64EC)
+        if (machine == IMAGE_FILE_MACHINE_ARM64 || machine == IMAGE_FILE_MACHINE_AMD64)
+            return true;
+#endif
+        return false;
     }
 }
 
@@ -397,7 +463,7 @@ void CPluginManagerDlg::OnBnClickedInstallPluginButton()
             continue;
 
         const WORD machine = GetPeMachine(source_path);
-        if (machine != 0 && machine != host_machine)
+        if (!IsPluginArchCompatible(machine, host_machine))
         {
             if (!skipped_arch.IsEmpty())
                 skipped_arch += L", ";

@@ -33,6 +33,7 @@ protected:
     bool IsSelectedValid();
     bool IsSelectedPluginEnable();     //选中插件是否可用
     void ResizeColumns();
+    void RepositionInstallButton();
 
     enum Column
     {
@@ -54,6 +55,7 @@ public:
     virtual BOOL OnInitDialog();
     afx_msg void OnNMRClickList1(NMHDR* pNMHDR, LRESULT* pResult);
     afx_msg void OnNMClickList1(NMHDR* pNMHDR, LRESULT* pResult);
+    afx_msg void OnLvnItemchangedList1(NMHDR* pNMHDR, LRESULT* pResult);
     afx_msg void OnBnClickedOptinsButton();
     afx_msg void OnBnClickedPluginInfoButton();
     afx_msg void OnBnClickedInstallPluginButton();

@@ -724,6 +724,10 @@ bool CPulseBarApp::MigrateConfigDir(bool to_program_dir, CString& message)
     }
 
     //移动语义：新位置已完整接管，清理旧位置的数据，避免两个目录同时存在配置
+    //注意：便携模式下 source_dir 就是 exe 目录，其中的 plugins 是「插件加载目录」，
+    //删掉会让插件全部失效——这种情况必须保留（插件私有配置可随配置走，DLL 不能）。
+    const bool source_is_module_dir =
+        _wcsicmp(WithTrailingSlash(source_dir).c_str(), WithTrailingSlash(m_module_dir).c_str()) == 0;
     for (const auto* file_name : data_files)
     {
         if (::GetFileAttributesW((target_dir + file_name).c_str()) != INVALID_FILE_ATTRIBUTES)
@@ -733,6 +737,8 @@ bool CPulseBarApp::MigrateConfigDir(bool to_program_dir, CString& message)
     {
         if (::GetFileAttributesW((target_dir + dir_name).c_str()) == INVALID_FILE_ATTRIBUTES)
             continue;
+        if (source_is_module_dir && _wcsicmp(dir_name, L"plugins") == 0)
+            continue;       //exe 目录的 plugins 是加载目录，绝不删除
         RemoveDirectoryContents(source_dir + dir_name);
         ::RemoveDirectoryW((source_dir + dir_name).c_str());
     }
@@ -913,11 +919,9 @@ UINT CPulseBarApp::CheckUpdateThreadFunc(LPVOID lpParam)
 #ifndef _DEBUG      //DEBUG下不在启动时检查更新
     theApp.CheckUpdate(lpParam);        //检查更新
 #endif
-    //检测插件更新
-    if (!theApp.m_plugins.GetPlugins().empty())
-    {
-        theApp.m_plugin_update.CheckForUpdate();
-    }
+    //检测插件更新与商店清单：不再以「已装插件」为前提，
+    //否则首次安装、或插件全被禁用时打开商店/看角标都拿不到清单
+    theApp.m_plugin_update.CheckForUpdate();
     return 0;
 }
 

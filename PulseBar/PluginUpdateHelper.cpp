@@ -126,7 +126,9 @@ bool CPluginUpdateHelper::CheckForUpdate()
         item.arch = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "arch"));
         const std::string official_flag(CTinyXml2Helper::ElementAttribute(ele, "official"));
         item.official = (official_flag == "true" || official_flag == "1");
-        if (item.file_name.empty())
+        //缺文件名无法与本地插件匹配；缺版本的条目会让版本比较退化成 0，
+        //两者都不入表，避免商店显示空版本或误报「有更新」
+        if (item.file_name.empty() || item.version.GetVersionString().empty())
             return;
         latest_versions.emplace(item.file_name, item.version);
         store_items.push_back(std::move(item));
