@@ -601,6 +601,9 @@ namespace
                 continue;
             const std::wstring source_item = WithTrailingSlash(source) + find_data.cFileName;
             const std::wstring target_item = WithTrailingSlash(target) + find_data.cFileName;
+            //符号链接/目录联接不跟随：递归进去会把目标内容当成本目录内容复制
+            if (find_data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
+                continue;
             if (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
             {
                 ::CreateDirectoryW(target_item.c_str(), nullptr);
@@ -629,6 +632,12 @@ namespace
             if (wcscmp(find_data.cFileName, L".") == 0 || wcscmp(find_data.cFileName, L"..") == 0)
                 continue;
             const std::wstring item = WithTrailingSlash(dir) + find_data.cFileName;
+            //符号链接/目录联接：只删链接本身。递归进目标会删掉链接指向的真实数据
+            if (find_data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)
+            {
+                ::RemoveDirectoryW(item.c_str());
+                continue;
+            }
             if (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
             {
                 RemoveDirectoryContents(item, depth + 1);

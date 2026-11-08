@@ -1,4 +1,6 @@
 ﻿#include "stdafx.h"
+#include <climits>
+#include <cstdlib>
 #include "PluginUpdateHelper.h"
 #include "Common.h"
 #include "PulseBar.h"
@@ -21,7 +23,10 @@ static void VersionFromString(const std::string& version_str, std::vector<int>& 
                 str_ver.push_back(ch);
         }
 
-        versions.push_back(atoi(str_ver.c_str()));
+        //atoi 对超长数字是未定义行为（清单来自网络），用 strtol 并钳制到 int
+        errno = 0;
+        const long parsed = std::strtol(str_ver.c_str(), nullptr, 10);
+        versions.push_back(parsed > INT_MAX ? INT_MAX : static_cast<int>(parsed));
     }
 }
 

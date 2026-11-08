@@ -116,8 +116,14 @@ namespace
 
         DWORD hash_length{};
         DWORD result_length{};
-        ::BCryptGetProperty(algorithm, BCRYPT_HASH_LENGTH,
-            reinterpret_cast<PUCHAR>(&hash_length), sizeof(hash_length), &result_length, 0);
+        if (!BCRYPT_SUCCESS(::BCryptGetProperty(algorithm, BCRYPT_HASH_LENGTH,
+            reinterpret_cast<PUCHAR>(&hash_length), sizeof(hash_length), &result_length, 0))
+            || hash_length == 0)
+        {
+            ::BCryptCloseAlgorithmProvider(algorithm, 0);
+            ::CloseHandle(file);
+            return std::wstring();
+        }
 
         BCRYPT_HASH_HANDLE hash{};
         bool ok = BCRYPT_SUCCESS(::BCryptCreateHash(algorithm, &hash, nullptr, 0, nullptr, 0, 0));
@@ -203,7 +209,8 @@ void CPluginStoreDlg::RefreshList(bool force_fetch)
             m_fetch_failed = true;
             m_items.clear();
             SetDlgItemText(IDC_STORE_DESC, CCommon::LoadText(IDS_STORE_FETCH_FAILED));
-            GetDlgItem(IDC_STORE_INSTALL)->EnableWindow(FALSE);
+            if (CWnd* install = GetDlgItem(IDC_STORE_INSTALL))
+                install->EnableWindow(FALSE);
             return;
         }
         m_items = theApp.m_plugin_update.GetStoreItems();
@@ -230,7 +237,8 @@ void CPluginStoreDlg::RefreshList(bool force_fetch)
     {
         SetDlgItemText(IDC_STORE_DESC, CCommon::LoadText(TXT_STORE_EMPTY));
     }
-    GetDlgItem(IDC_STORE_INSTALL)->EnableWindow(row > 0);
+    if (CWnd* install = GetDlgItem(IDC_STORE_INSTALL))
+        install->EnableWindow(row > 0);
 }
 
 int CPluginStoreDlg::FindLocalState(const PluginStoreItem& item) const
