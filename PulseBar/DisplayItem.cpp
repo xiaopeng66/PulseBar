@@ -58,11 +58,19 @@ CString CommonDisplayItem::GetItemName() const
 {
     if (is_plugin)
     {
-        //GetItemName() 按 ABI 可能返回空指针，直接交给 CString 会变成空指针赋值
-        if (plugin_item != nullptr && plugin_item->GetItemName() != nullptr)
-            return plugin_item->GetItemName();
-        else
+        //GetItemName() 按 ABI 可能返回空指针；插件代码也可能崩溃（/EHa 可捕获）
+        if (plugin_item == nullptr)
             return CString();
+        try
+        {
+            const wchar_t* name = plugin_item->GetItemName();
+            return name != nullptr ? CString(name) : CString();
+        }
+        catch (...)
+        {
+            LogPluginCallbackFailure(L"IPluginItem::GetItemName");
+            return CString();
+        }
     }
     else
     {
@@ -98,9 +106,20 @@ std::wstring CommonDisplayItem::DefaultString(bool is_main_window) const
     std::wstring default_text;
     if (is_plugin)
     {
-        //GetItemLableText() 可能返回空指针，std::wstring 的赋值会直接崩溃
-        if (plugin_item != nullptr && plugin_item->GetItemLableText() != nullptr)
-            default_text = plugin_item->GetItemLableText();
+        //GetItemLableText() 可能返回空指针；插件代码崩溃时退回空标签
+        if (plugin_item != nullptr)
+        {
+            try
+            {
+                const wchar_t* label = plugin_item->GetItemLableText();
+                if (label != nullptr)
+                    default_text = label;
+            }
+            catch (...)
+            {
+                LogPluginCallbackFailure(L"IPluginItem::GetItemLableText");
+            }
+        }
         default_text += L' ';
     }
     else
@@ -178,8 +197,19 @@ const wchar_t* CommonDisplayItem::GetItemIniKeyName() const
     if (is_plugin)
     {
         //这个返回值会直接用作 ini 的键名，空指针在写入时同样会崩溃
-        if (plugin_item != nullptr && plugin_item->GetItemId() != nullptr)
-            return plugin_item->GetItemId();
+        if (plugin_item != nullptr)
+        {
+            try
+            {
+                const wchar_t* id = plugin_item->GetItemId();
+                if (id != nullptr)
+                    return id;
+            }
+            catch (...)
+            {
+                LogPluginCallbackFailure(L"IPluginItem::GetItemId");
+            }
+        }
         return L"";
     }
     else

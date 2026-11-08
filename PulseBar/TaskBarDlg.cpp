@@ -498,7 +498,14 @@ void CTaskBarDlg::DrawPluginItem(IDrawCommon& drawer, IPluginItem* item, CRect r
 
     if (plugin != nullptr && plugin->GetAPIVersion() >= 2)
     {
-        plugin->OnExtenedInfo(ITMPlugin::EI_DRAW_TASKBAR_WND, L"1");
+        try
+        {
+            plugin->OnExtenedInfo(ITMPlugin::EI_DRAW_TASKBAR_WND, L"1");
+        }
+        catch (...)
+        {
+            LogPluginCallbackFailure(L"ITMPlugin::OnExtenedInfo");
+        }
     }
     if (item->IsCustomDraw())
     {
@@ -508,8 +515,15 @@ void CTaskBarDlg::DrawPluginItem(IDrawCommon& drawer, IPluginItem* item, CRect r
         //由插件自绘
         if (plugin != nullptr && plugin->GetAPIVersion() >= 2)
         {
-            plugin->OnExtenedInfo(ITMPlugin::EI_LABEL_TEXT_COLOR, std::to_wstring(label_text_color).c_str());
-            plugin->OnExtenedInfo(ITMPlugin::EI_VALUE_TEXT_COLOR, std::to_wstring(value_text_color).c_str());
+            try
+            {
+                plugin->OnExtenedInfo(ITMPlugin::EI_LABEL_TEXT_COLOR, std::to_wstring(label_text_color).c_str());
+                plugin->OnExtenedInfo(ITMPlugin::EI_VALUE_TEXT_COLOR, std::to_wstring(value_text_color).c_str());
+            }
+            catch (...)
+            {
+                LogPluginCallbackFailure(L"ITMPlugin::OnExtenedInfo");
+            }
         }
         drawer.SetTextColor(value_text_color);
         //插件自绘可能崩溃（/EHa 下 catch 能捕获）：只放弃这一项的绘制，不拖垮整帧
@@ -567,7 +581,17 @@ void CTaskBarDlg::DrawPluginItem(IDrawCommon& drawer, IPluginItem* item, CRect r
         IDrawCommon::Alignment value_alignment{ theApp.m_taskbar_data.value_right_align ? IDrawCommon::Alignment::RIGHT : IDrawCommon::Alignment::LEFT };      //数值的对齐方式
         if (vertical)
             value_alignment = IDrawCommon::Alignment::CENTER;
-        drawer.DrawWindowText(rect_value, item->GetItemValueText(), value_text_color, value_alignment);
+        CString value_text;
+        try
+        {
+            const wchar_t* plugin_text = item->GetItemValueText();
+            value_text = plugin_text != nullptr ? plugin_text : L"";
+        }
+        catch (...)
+        {
+            LogPluginCallbackFailure(L"IPluginItem::GetItemValueText");
+        }
+        drawer.DrawWindowText(rect_value, value_text, value_text_color, value_alignment);
     }
 }
 
@@ -1586,9 +1610,17 @@ void CTaskBarDlg::OnInitMenu(CMenu* pMenu)
             ID_PLUGIN_COMMAND_MAX - ID_PLUGIN_COMMAND_START + 1));
         for (int index = 0; index < command_count; index++)
         {
-            bool checked = (plugin->IsCommandChecked(index) != 0);
-            CheckMenuItemByCommand(pMenu, ID_PLUGIN_COMMAND_START + index,
-                checked ? MF_CHECKED : MF_UNCHECKED);
+            //插件回调可能在插件代码里崩溃（/EHa 下可捕获）：保持菜单可用
+            try
+            {
+                bool checked = (plugin->IsCommandChecked(index) != 0);
+                CheckMenuItemByCommand(pMenu, ID_PLUGIN_COMMAND_START + index,
+                    checked ? MF_CHECKED : MF_UNCHECKED);
+            }
+            catch (...)
+            {
+                LogPluginCallbackFailure(L"ITMPlugin::IsCommandChecked");
+            }
         }
     }
 
@@ -1757,7 +1789,15 @@ BOOL CTaskBarDlg::OnCommand(WPARAM wParam, LPARAM lParam)
         IPluginItem* item = theApp.m_plugins.GetItemByIndex(uMsg - ID_SHOW_PLUGIN_ITEM_START);
         if (item != nullptr)
         {
-            const wchar_t* item_id = item->GetItemId();
+            const wchar_t* item_id = nullptr;
+            try
+            {
+                item_id = item->GetItemId();
+            }
+            catch (...)
+            {
+                LogPluginCallbackFailure(L"IPluginItem::GetItemId");
+            }
             if (item_id != nullptr)
             {
                 bool displayed = theApp.m_taskbar_data.plugin_display_item.Contains(item_id);
@@ -1778,7 +1818,16 @@ BOOL CTaskBarDlg::OnCommand(WPARAM wParam, LPARAM lParam)
                 const int command_count = max(0, min(plugin->GetCommandCount(),
                     ID_PLUGIN_COMMAND_MAX - ID_PLUGIN_COMMAND_START + 1));
                 if (index < command_count)
-                    plugin->OnPluginCommand(index, (void*)GetSafeHwnd(), nullptr);
+                {
+                    try
+                    {
+                        plugin->OnPluginCommand(index, (void*)GetSafeHwnd(), nullptr);
+                    }
+                    catch (...)
+                    {
+                        LogPluginCallbackFailure(L"ITMPlugin::OnPluginCommand");
+                    }
+                }
             }
         }
     }

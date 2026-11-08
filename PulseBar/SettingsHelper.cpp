@@ -1,4 +1,5 @@
 ﻿#include "stdafx.h"
+#include "PluginManager.h"
 #include "SettingsHelper.h"
 #include "PulseBar.h"
 
@@ -112,13 +113,23 @@ void CSettingsHelper::LoadPluginDisplayStr(const wchar_t* AppName, DispStrings& 
         //GetItemLableText()/GetItemId() 都可能返回空指针，而 std::wstring 的构造
         //会直接把空指针当成字符串起点去读，导致启动阶段崩溃。
         //加载插件时已经拒收了这类项目，这里是第二道防线。
-        if (plugin == nullptr || plugin->GetItemLableText() == nullptr || plugin->GetItemId() == nullptr)
+        if (plugin == nullptr)
             continue;
-        std::wstring str{ plugin->GetItemLableText() };
-        bool exist = GetString(AppName, plugin->GetItemId(), str);
-        //主窗口只读取配置文件中存在的项，任务栏窗口读取所有项
-        if (!is_main_window || exist)
-            disp_str.Load(plugin->GetItemId(), str);
+        //插件 getter 可能崩溃（/EHa 下可捕获）：跳过该项，不能中断配置加载
+        try
+        {
+            if (plugin->GetItemLableText() == nullptr || plugin->GetItemId() == nullptr)
+                continue;
+            std::wstring str{ plugin->GetItemLableText() };
+            bool exist = GetString(AppName, plugin->GetItemId(), str);
+            //主窗口只读取配置文件中存在的项，任务栏窗口读取所有项
+            if (!is_main_window || exist)
+                disp_str.Load(plugin->GetItemId(), str);
+        }
+        catch (...)
+        {
+            LogPluginCallbackFailure(L"IPluginItem::GetItemLableText/GetItemId");
+        }
     }
 }
 
@@ -126,9 +137,18 @@ void CSettingsHelper::SavePluginDisplayStr(const wchar_t* AppName, const DispStr
 {
     for (const auto& plugin : theApp.m_plugins.GetPluginItems())
     {
-        if (plugin == nullptr || plugin->GetItemId() == nullptr)
+        if (plugin == nullptr)
             continue;
-        if (disp_str.GetAllItems().find(plugin) != disp_str.GetAllItems().end())
-            WriteString(AppName, plugin->GetItemId(), disp_str.GetConst(plugin));
+        try
+        {
+            if (plugin->GetItemId() == nullptr)
+                continue;
+            if (disp_str.GetAllItems().find(plugin) != disp_str.GetAllItems().end())
+                WriteString(AppName, plugin->GetItemId(), disp_str.GetConst(plugin));
+        }
+        catch (...)
+        {
+            LogPluginCallbackFailure(L"IPluginItem::GetItemId");
+        }
     }
 }

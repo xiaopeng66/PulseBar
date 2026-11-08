@@ -185,7 +185,14 @@ BOOL CPluginManagerDlg::OnInitDialog()
         HICON hIcon{};
         if (plugin.plugin != nullptr && plugin.plugin->GetAPIVersion() >= 5)
         {
-            hIcon = (HICON)plugin.plugin->GetPluginIcon();
+            try
+            {
+                hIcon = (HICON)plugin.plugin->GetPluginIcon();
+            }
+            catch (...)
+            {
+                LogPluginCallbackFailure(L"ITMPlugin::GetPluginIcon");
+            }
         }
         if (hIcon == nullptr)
         {
@@ -355,9 +362,16 @@ void CPluginManagerDlg::OnBnClickedOptinsButton()
         auto plugin_info = theApp.m_plugins.GetPlugins()[m_item_selected];
         if (plugin_info.plugin != nullptr)
         {
-            ITMPlugin::OptionReturn rtn = plugin_info.plugin->ShowOptionsDialog(m_hWnd);
-            if (rtn == ITMPlugin::OR_OPTION_NOT_PROVIDED)
-                MessageBox(CCommon::LoadText(IDS_PLUGIN_NO_OPTIONS_INFO), nullptr, MB_ICONINFORMATION | MB_OK);
+            try
+            {
+                ITMPlugin::OptionReturn rtn = plugin_info.plugin->ShowOptionsDialog(m_hWnd);
+                if (rtn == ITMPlugin::OR_OPTION_NOT_PROVIDED)
+                    MessageBox(CCommon::LoadText(IDS_PLUGIN_NO_OPTIONS_INFO), nullptr, MB_ICONINFORMATION | MB_OK);
+            }
+            catch (...)
+            {
+                LogPluginCallbackFailure(L"ITMPlugin::ShowOptionsDialog");
+            }
             //else if (rtn == ITMPlugin::OR_OPTION_CHANGED)
             //    theApp.m_pMainWnd->SendMessage(WM_REOPEN_TASKBAR_WND);
         }
@@ -625,7 +639,16 @@ BOOL CPluginManagerDlg::OnCommand(WPARAM wParam, LPARAM lParam)
                 const int command_count = max(0, min(plugin->GetCommandCount(),
                     ID_PLUGIN_COMMAND_MAX - ID_PLUGIN_COMMAND_START + 1));
                 if (index < command_count)
-                    plugin->OnPluginCommand(index, (void*)GetSafeHwnd(), nullptr);
+                {
+                    try
+                    {
+                        plugin->OnPluginCommand(index, (void*)GetSafeHwnd(), nullptr);
+                    }
+                    catch (...)
+                    {
+                        LogPluginCallbackFailure(L"ITMPlugin::OnPluginCommand");
+                    }
+                }
             }
         }
     }

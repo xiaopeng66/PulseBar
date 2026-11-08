@@ -1767,15 +1767,22 @@ std::wstring CPulseBarApp::GetPlauginTooltipInfo() const
         {
             //GetTooltipInfo() 按 ABI 可以返回空指针（表示“没有额外提示信息”），
             //直接用它构造 std::wstring 就是 wcslen(nullptr)，会让任务栏刷新线程崩溃。
-            const wchar_t* tooltip = item.plugin->GetTooltipInfo();
-            if (tooltip == nullptr)
-                continue;
-            std::wstring plugin_tooltip = tooltip;
-            CCommon::StringNormalize(plugin_tooltip);
-            if (!plugin_tooltip.empty())
+            try
             {
-                tip_info += L"\r\n";
-                tip_info += plugin_tooltip.c_str();
+                const wchar_t* tooltip = item.plugin->GetTooltipInfo();
+                if (tooltip == nullptr)
+                    continue;
+                std::wstring plugin_tooltip = tooltip;
+                CCommon::StringNormalize(plugin_tooltip);
+                if (!plugin_tooltip.empty())
+                {
+                    tip_info += L"\r\n";
+                    tip_info += plugin_tooltip.c_str();
+                }
+            }
+            catch (...)
+            {
+                LogPluginCallbackFailure(L"ITMPlugin::GetTooltipInfo");
             }
         }
     }
@@ -1802,6 +1809,9 @@ void CPulseBarApp::SendSettingsToPlugin()
     {
         if (plugin_info.plugin != nullptr && plugin_info.plugin->GetAPIVersion() >= 2)
         {
+            //一次性广播所有设置；插件崩溃时记录并放弃该插件的后续通知
+            try
+            {
             plugin_info.plugin->OnExtenedInfo(ITMPlugin::EI_NAIN_WND_NET_SPEED_SHORT_MODE, std::to_wstring(m_main_wnd_data.speed_short_mode).c_str());
             plugin_info.plugin->OnExtenedInfo(ITMPlugin::EI_MAIN_WND_SPERATE_WITH_SPACE, std::to_wstring(m_main_wnd_data.separate_value_unit_with_space).c_str());
             plugin_info.plugin->OnExtenedInfo(ITMPlugin::EI_MAIN_WND_UNIT_BYTE, std::to_wstring(m_main_wnd_data.unit_byte).c_str());
@@ -1817,6 +1827,11 @@ void CPulseBarApp::SendSettingsToPlugin()
             plugin_info.plugin->OnExtenedInfo(ITMPlugin::EI_TASKBAR_WND_UNIT_SELECT, std::to_wstring(static_cast<int>(m_taskbar_data.speed_unit)).c_str());
             plugin_info.plugin->OnExtenedInfo(ITMPlugin::EI_TASKBAR_WND_NOT_SHOW_UNIT, std::to_wstring(m_taskbar_data.hide_unit).c_str());
             plugin_info.plugin->OnExtenedInfo(ITMPlugin::EI_TASKBAR_WND_NOT_SHOW_PERCENT, std::to_wstring(m_taskbar_data.hide_percent).c_str());
+            }
+            catch (...)
+            {
+                LogPluginCallbackFailure(L"ITMPlugin::OnExtenedInfo");
+            }
         }
     }
 }
