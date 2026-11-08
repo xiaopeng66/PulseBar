@@ -1324,10 +1324,9 @@ void CPulseBarApp::InitMenuResourse()
         addIconForCommand(menu_root, ID_TRAFFIC_HISTORY, IDI_STATISTICS);
         addIconForCommand(menu_root, ID_OPEN_TASK_MANAGER, IDI_TASK_MANAGER);
         addIconForCommand(menu_root, ID_DISPLAY_SETTINGS, IDI_ITEM);
-        addIconForCommand(menu_root, ID_SHOW_SPEED_GRAPH_TIP, IDI_MOUSE);
+        // 这两项是勾选型开关，一律不加图标：图标会占掉菜单项左侧的勾选位
         addIconForCommand(menu_root, ID_PLUGIN_MANAGE, IDI_PLUGINS);
         addIconForCommand(menu_root, ID_OPTIONS2, IDI_SETTINGS);
-        addIconForCommand(menu_root, ID_SHOW_TASK_BAR_WND, IDI_TASKBAR_WINDOW);
         addIconForCommand(menu_root, ID_HELP, IDI_HELP);
         addIconForCommand(menu_root, ID_APP_ABOUT, IDR_MAINFRAME);
         addIconForCommand(menu_root, ID_APP_EXIT, IDI_EXIT);

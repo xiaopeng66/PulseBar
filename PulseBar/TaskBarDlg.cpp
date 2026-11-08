@@ -1571,9 +1571,9 @@ void CTaskBarDlg::ApplyMenuCheckStates(CMenu* menu)
     //「悬停显示监控面板」勾选 = 已启用
     CheckMenuItemByCommand(menu, ID_SHOW_SPEED_GRAPH_TIP,
         theApp.m_taskbar_data.show_speed_graph_tip ? MF_CHECKED : MF_UNCHECKED);
-    //「隐藏任务栏面板」勾选 = 当前已隐藏，与菜单文案的语义一致
+    //「显示任务栏面板」勾选 = 当前正在显示（文案已固定为「显示」，状态只靠勾选表达）
     CheckMenuItemByCommand(menu, ID_SHOW_TASK_BAR_WND,
-        theApp.m_cfg_data.m_show_task_bar_wnd ? MF_UNCHECKED : MF_CHECKED);
+        theApp.m_cfg_data.m_show_task_bar_wnd ? MF_CHECKED : MF_UNCHECKED);
 }
 
 void CTaskBarDlg::OnInitMenu(CMenu* pMenu)

@@ -3676,11 +3676,9 @@ afx_msg LRESULT CPulseBarDlg::OnTaskbarMenuPopedUp(WPARAM wParam, LPARAM lParam)
             theApp.m_general_data.show_all_interface ? MF_GRAYED : MF_ENABLED);
         EnableMenuItemByCommand(menu, ID_CHECK_UPDATE,
             theApp.IsCheckingForUpdate() ? MF_GRAYED : MF_ENABLED);
-        CMenu* panel = FindMenuContainingCommand(menu, ID_SHOW_TASK_BAR_WND);
-        if (panel != nullptr)
-            panel->ModifyMenu(ID_SHOW_TASK_BAR_WND, MF_BYCOMMAND | MF_STRING, ID_SHOW_TASK_BAR_WND,
-                theApp.m_str_table.LoadMenuText(theApp.m_cfg_data.m_show_task_bar_wnd
-                    ? L"TXT_SETTINGS_HIDE_TASKBAR" : L"TXT_SETTINGS_SHOW_TASKBAR").c_str());
+        // 「显示任务栏面板」固定文案，状态用勾选表示（不再靠切换文字）
+        CheckMenuItemByCommand(menu, ID_SHOW_TASK_BAR_WND,
+            theApp.m_cfg_data.m_show_task_bar_wnd ? MF_CHECKED : MF_UNCHECKED);
     }
     return 0;
 }
