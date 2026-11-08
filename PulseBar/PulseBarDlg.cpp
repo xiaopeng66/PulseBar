@@ -3202,36 +3202,24 @@ afx_msg LRESULT CPulseBarDlg::OnNotifyIcon(WPARAM wParam, LPARAM lParam)
     ::SetForegroundWindow(owner);
     CPoint point;
     GetCursorPos(&point);
-    //开关型菜单项点击后原位重开，方便连续调整；动作型照常关闭
-    for (;;)
+    menu->SetDefaultItem(-1);
+    CTaskBarDlg::ApplyMenuCheckStates(menu);
+    UINT command{};
     {
-        if (!::IsWindow(owner))
-            return 0;
-        menu->SetDefaultItem(-1);
-        //托盘菜单不经 OnInitMenu：每轮都要重刷勾选、启用状态与插件菜单
-        theApp.UpdateTrayPluginMenu();
-        OnTaskbarMenuPopedUp(0, 0);
-        CTaskBarDlg::ApplyMenuCheckStates(menu);
-        UINT command{};
-        {
-            CFlagLocker tracking(theApp.m_tray_plugin_menu_active);
-            command=menu->TrackPopupMenu(TPM_LEFTALIGN | TPM_RIGHTBUTTON | TPM_RETURNCMD,
-                point.x,point.y,CWnd::FromHandle(owner));
-        }
-        if (command==0)
-            return 0;
-        if (command==ID_APP_EXIT && dialog_exist)
-        {
-            ::SendMessage(owner,WM_CLOSE,0,0);
-            ::PostMessage(GetSafeHwnd(),WM_COMMAND,command,0);
-            return 0;
-        }
-        //同步执行，重开时勾选已更新
-        ::SendMessage(GetSafeHwnd(),WM_COMMAND,command,0);
-        if (!CTaskBarDlg::IsMenuToggleCommand(command))
-            return 0;
-        ::Sleep(20);        //让菜单完全消失再重开，减少重影
+        CFlagLocker tracking(theApp.m_tray_plugin_menu_active);
+        command=menu->TrackPopupMenu(TPM_LEFTALIGN | TPM_RIGHTBUTTON | TPM_RETURNCMD,
+            point.x,point.y,CWnd::FromHandle(owner));
     }
+    if (command==0)
+        return 0;
+    if (command==ID_APP_EXIT && dialog_exist)
+    {
+        ::SendMessage(owner,WM_CLOSE,0,0);
+        ::PostMessage(GetSafeHwnd(),WM_COMMAND,command,0);
+    }
+    else
+        ::SendMessage(GetSafeHwnd(),WM_COMMAND,command,0);
+    return 0;
 }
 
 
