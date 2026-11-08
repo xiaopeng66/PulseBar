@@ -7,6 +7,7 @@
 #include "FilePathHelper.h"
 #include <urlmon.h>
 #include <bcrypt.h>
+#include <thread>
 
 #pragma comment(lib, "urlmon.lib")
 #pragma comment(lib, "bcrypt.lib")
@@ -16,6 +17,9 @@ namespace
 #ifndef IMAGE_FILE_MACHINE_ARM64EC
 #define IMAGE_FILE_MACHINE_ARM64EC 0xA641
 #endif
+
+    //后台拉取线程完成后通知 UI 线程；wParam=1 表示拉取成功
+    constexpr UINT WM_STORE_FETCH_DONE = WM_APP + 520;
 
     //读取 PE 的 Machine 字段：提前拒绝架构不匹配的插件，避免白重启一次
     WORD GetPeMachineFromStore(const std::wstring& path)
@@ -151,6 +155,28 @@ namespace
         }
         return hex;
     }
+
+    //正在被本进程加载的 DLL 不能删除也不能覆盖，但可以改名让出文件名：
+    //Windows 加载器以 FILE_SHARE_DELETE 打开映像，重命名成功、写入失败。
+    //旧文件留在 plugins 目录里，下次启动时由 LoadPlugins 清理。
+    bool MoveLoadedPluginAside(const CString& path)
+    {
+        for (int index = 0; index < 10; ++index)
+        {
+            CString backup;
+            if (index == 0)
+                backup.Format(L"%s.pb-old", path.GetString());
+            else
+                backup.Format(L"%s.pb-old%d", path.GetString(), index);
+
+            //上一次留下的同名残留可能同样被占用：换下一个编号
+            if (::DeleteFileW(backup) == FALSE && ::GetFileAttributesW(backup) != INVALID_FILE_ATTRIBUTES)
+                continue;
+            if (::MoveFileW(path, backup))
+                return true;
+        }
+        return false;
+    }
 }
 
 IMPLEMENT_DYNAMIC(CPluginStoreDlg, CBaseDialog)
@@ -175,6 +201,7 @@ BEGIN_MESSAGE_MAP(CPluginStoreDlg, CBaseDialog)
     ON_NOTIFY(NM_CLICK, IDC_STORE_LIST, &CPluginStoreDlg::OnNMClickStoreList)
     ON_NOTIFY(LVN_ITEMCHANGED, IDC_STORE_LIST, &CPluginStoreDlg::OnLvnItemchangedStoreList)
     ON_NOTIFY(NM_DBLCLK, IDC_STORE_LIST, &CPluginStoreDlg::OnNMDblclkStoreList)
+    ON_MESSAGE(WM_STORE_FETCH_DONE, &CPluginStoreDlg::OnStoreFetchDone)
     ON_WM_SIZE()
 END_MESSAGE_MAP()
 
@@ -189,32 +216,65 @@ BOOL CPluginStoreDlg::OnInitDialog()
     m_list.InsertColumn(2, CCommon::LoadText(TXT_STORE_COL_AUTHOR), LVCFMT_LEFT, theApp.DPI(90));
     m_list.InsertColumn(3, CCommon::LoadText(TXT_STORE_COL_STATUS), LVCFMT_LEFT, theApp.DPI(70));
 
-    //首次打开优先用启动时已拉到的清单，避免每次打开都卡在网络请求上
-    RefreshList(false);
+    //先用启动线程已经拉到的快照填充，对话框立刻可见；
+    //快照为空时在后台补拉，绝不在 UI 线程上等 DNS/TLS/重定向。
+    RefreshList();
+    if (m_items.empty())
+        StartFetch();
     ResizeColumns();
     return TRUE;
 }
 
-void CPluginStoreDlg::RefreshList(bool force_fetch)
+void CPluginStoreDlg::StartFetch()
+{
+    if (m_fetching)
+        return;
+    m_fetching = true;
+    m_fetch_failed = false;
+    CString loading_text = CCommon::LoadText(IDS_ACQUIRING);
+    loading_text += L"…";
+    SetDlgItemText(IDC_STORE_DESC, loading_text);
+    if (CWnd* install = GetDlgItem(IDC_STORE_INSTALL))
+        install->EnableWindow(FALSE);
+    if (CWnd* refresh = GetDlgItem(IDC_STORE_REFRESH))
+        refresh->EnableWindow(FALSE);
+
+    //只捕获窗口句柄，不引用 this：对话框可能先被关闭，线程照常退出即可
+    const HWND hwnd = GetSafeHwnd();
+    std::thread([hwnd]() {
+        const bool fetched = theApp.m_plugin_update.CheckForUpdate();
+        if (::IsWindow(hwnd))
+            ::PostMessage(hwnd, WM_STORE_FETCH_DONE, fetched ? 1 : 0, 0);
+    }).detach();
+}
+
+LRESULT CPluginStoreDlg::OnStoreFetchDone(WPARAM wParam, LPARAM)
+{
+    m_fetching = false;
+    if (CWnd* refresh = GetDlgItem(IDC_STORE_REFRESH))
+        refresh->EnableWindow(TRUE);
+
+    if (wParam == 0)
+    {
+        m_fetch_failed = true;
+        m_items.clear();
+        m_list.DeleteAllItems();
+        SetDlgItemText(IDC_STORE_DESC, CCommon::LoadText(IDS_STORE_FETCH_FAILED));
+        if (CWnd* install = GetDlgItem(IDC_STORE_INSTALL))
+            install->EnableWindow(FALSE);
+        return 0;
+    }
+
+    RefreshList();
+    return 0;
+}
+
+void CPluginStoreDlg::RefreshList()
 {
     m_list.DeleteAllItems();
     m_fetch_failed = false;
 
     m_items = theApp.m_plugin_update.GetStoreItems();
-    if (force_fetch || m_items.empty())
-    {
-        CWaitCursor wait_cursor;
-        if (!theApp.m_plugin_update.CheckForUpdate())
-        {
-            m_fetch_failed = true;
-            m_items.clear();
-            SetDlgItemText(IDC_STORE_DESC, CCommon::LoadText(IDS_STORE_FETCH_FAILED));
-            if (CWnd* install = GetDlgItem(IDC_STORE_INSTALL))
-                install->EnableWindow(FALSE);
-            return;
-        }
-        m_items = theApp.m_plugin_update.GetStoreItems();
-    }
 
     int row = 0;
     for (const auto& item : m_items)
@@ -302,7 +362,7 @@ void CPluginStoreDlg::OnNMDblclkStoreList(NMHDR* pNMHDR, LRESULT* pResult)
 
 void CPluginStoreDlg::OnBnClickedStoreRefresh()
 {
-    RefreshList(true);   //手动刷新强制联网
+    StartFetch();   //手动刷新：后台联网，界面不冻结
 }
 
 void CPluginStoreDlg::OnBnClickedStoreInstall()
@@ -377,13 +437,16 @@ void CPluginStoreDlg::OnBnClickedStoreInstall()
             ::DeleteFileW(temp_path);
             return;
         }
-        //删不掉说明正被程序加载，此时覆盖会失败：给出准确原因，不要误报成网络问题
-        ::DeleteFileW(target_path);
-        if (::GetFileAttributesW(target_path) != INVALID_FILE_ATTRIBUTES)
+        //删不掉说明正被程序加载：改名让出文件名，新文件顶替，重启后即加载新版本。
+        //只有连改名都失败（极少数被独占打开的 DLL）才让用户先退出程序。
+        if (::DeleteFileW(target_path) == FALSE && ::GetFileAttributesW(target_path) != INVALID_FILE_ATTRIBUTES)
         {
-            ::DeleteFileW(temp_path);
-            MessageBox(CCommon::LoadText(IDS_STORE_IN_USE), nullptr, MB_ICONWARNING | MB_OK);
-            return;
+            if (!MoveLoadedPluginAside(target_path))
+            {
+                ::DeleteFileW(temp_path);
+                MessageBox(CCommon::LoadText(IDS_STORE_IN_USE), nullptr, MB_ICONWARNING | MB_OK);
+                return;
+            }
         }
     }
     if (!::MoveFileW(temp_path, target_path))

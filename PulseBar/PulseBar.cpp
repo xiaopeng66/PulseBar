@@ -74,8 +74,9 @@ void CPulseBarApp::LoadConfig()
     //m_general_data.allow_skin_cover_font = ini.GetBool(_T("general"), _T("allow_skin_cover_font"), true);
     //m_general_data.allow_skin_cover_text = ini.GetBool(_T("general"), _T("allow_skin_cover_text"), true);
     m_general_data.show_all_interface = ini.GetBool(L"general", L"show_all_interface", false);
-    bool is_chinese_language{ m_str_table.IsSimplifiedChinese() };     //当前语言是否为简体中文
-    m_general_data.update_source = ini.GetInt(L"general", L"update_source", is_chinese_language ? 1 : 0);   //如果当前语言为简体，则默认更新源为Gitee，否则为GitHub
+    //默认走 GitHub（插件清单和 Release 资产都在那边）；Gitee 仓库当前不存在，
+    //只在用户显式选择时先试，失败后由 GetURL 回退到 GitHub。
+    m_general_data.update_source = ini.GetInt(L"general", L"update_source", 0);
     m_general_data.cpu_usage_acquire_method = static_cast<GeneralSettingData::CpuUsageAcquireMethod>(ini.GetInt(L"general", L"cpu_usage_acquire_method", GeneralSettingData::CA_PDH));
     //只有 CA_CPU_TIME(0)/CA_PDH(1) 两种方式；越界值会让两个单选框都不选中，界面看起来像“没有设置”
     if (static_cast<int>(m_general_data.cpu_usage_acquire_method) < static_cast<int>(GeneralSettingData::CA_CPU_TIME)

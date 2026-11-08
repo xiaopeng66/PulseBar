@@ -1314,6 +1314,21 @@ bool CTaskBarDlg::IsTaskbarCloseToIconEnable(bool taskbar_wnd_on_left)
         CWindowsSettingHelper::IsTaskbarCenterAlign() && taskbar_wnd_on_left;
 }
 
+namespace
+{
+    //初始化中止的原因只记前几条：主定时器会持续自愈重试，避免刷爆日志
+    void LogTaskbarInitFailure(const wchar_t* reason, bool secondary)
+    {
+        static int logged{};
+        if (logged >= 5)
+            return;
+        ++logged;
+        std::wstring message = reason;
+        message += secondary ? L" (副屏)" : L" (主屏)";
+        CCommon::WriteLog(message.c_str(), theApp.m_log_path.c_str());
+    }
+}
+
 BOOL CTaskBarDlg::OnInitDialog()
 {
     CDialogEx::OnInitDialog();
@@ -1331,7 +1346,10 @@ BOOL CTaskBarDlg::OnInitDialog()
     m_pDC = GetDC();
     m_hTaskbar = FindTaskbarHandle(m_is_secondary_display); //查找任务栏的句柄
     if (!::IsWindow(m_hTaskbar) || !::GetWindowRect(m_hTaskbar, m_rcTaskbar))
+    {
+        LogTaskbarInitFailure(L"任务栏窗口初始化中止：拿不到任务栏句柄或矩形", m_is_secondary_display);
         return TRUE;    //宿主检查 IsReadyToShow，不显示无效 Shell 上的半初始化窗口。
+    }
 
     //设置窗口透明色
     ApplyWindowTransparentColor();
@@ -1339,7 +1357,10 @@ BOOL CTaskBarDlg::OnInitDialog()
     InitTaskbarWnd();
     const HWND taskbar_parent = GetParentHwnd();
     if (!::IsWindow(taskbar_parent))
+    {
+        LogTaskbarInitFailure(L"任务栏窗口初始化中止：父窗口无效", m_is_secondary_display);
         return TRUE;
+    }
     //SetParent 对非 WS_CHILD 的 popup 对话框设置的是 GA_PARENT 链；
     //GetParent 只查 owner，用它判定会永远误报失败并触发重建循环。
     //成功判定以 SetParent 返回值与 GetAncestor(GA_PARENT) 为准。
@@ -1394,6 +1415,8 @@ BOOL CTaskBarDlg::OnInitDialog()
 
     SetTimer(TASKBAR_TIMER, 1000, NULL);
 
+    if (m_rect.IsRectEmpty())
+        LogTaskbarInitFailure(L"任务栏窗口初始化中止：可用区域为空", m_is_secondary_display);
     m_initialization_succeeded = !m_rect.IsRectEmpty();
     return TRUE;  // return TRUE unless you set the focus to a control
                   // 异常: OCX 属性页应返回 FALSE

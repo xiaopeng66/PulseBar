@@ -25,13 +25,14 @@ EXPECTED_MAX_WIDTH = 4096
 
 def make_code():
     source = native.source("PluginManager.cpp")
-    logger = native.method(source, "static void LogPluginCallbackFailure(")
+    logger = native.method(source, "void LogPluginCallbackFailure(")
     width = native.method(source, "int CPluginManager::GetItemWidth(")
     valid = native.method(source, "static bool IsPluginItemValid(")
 
     code = r'''#include <climits>
 #include <cstdio>
 #include <map>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 using namespace std;

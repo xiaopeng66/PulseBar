@@ -38,6 +38,8 @@ def make_code():
 #include <vector>
 using namespace std;
 using namespace std::chrono_literals;
+// 生产代码里由 PluginManager.cpp 定义；夹具只提取调用点，这里给它一个空实现
+inline void LogPluginCallbackFailure(const wchar_t*) noexcept {}
 struct LanguageInfo { int language_id{}; };
 using StringSet = set<wstring>;
 '''

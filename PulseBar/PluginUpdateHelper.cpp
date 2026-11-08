@@ -97,19 +97,28 @@ bool CPluginUpdateHelper::CheckForUpdate()
     //否则两次请求互相覆盖、两次 swap 交错会让不同调用者拿到不同代际的表。
     std::lock_guard<std::mutex> fetch_lock(m_fetch_mutex);
 
-    std::wstring url;
-    //插件商店版本表随主仓库发布，避免依赖额外的空仓库
-    //更新源为Gitee
-    if (theApp.m_general_data.update_source == 1)
-        url = L"https://gitee.com/xiaopeng66/PulseBar/raw/main/docs/plugins/plugins_version.xml";
-    //更新源为Github
-    else
-        url = L"https://raw.githubusercontent.com/xiaopeng66/PulseBar/main/docs/plugins/plugins_version.xml";
+    //插件商店版本表随主仓库发布。注意 GitHub 侧必须用 github.com/<owner>/<repo>/raw/…，
+    //raw.githubusercontent.com 在部分网络下 TLS 会被中断（实测不可达）。
+    //Gitee 镜像可能不存在（当前仓库返回 404），两个源互为回退；清单里的相对下载路径
+    //要跟随「实际取到清单的那个源」，否则回退后下载链接还会打到失效源。
+    const std::wstring github_base = L"https://github.com/xiaopeng66/PulseBar/raw/main/";
+    const std::wstring gitee_base = L"https://gitee.com/xiaopeng66/PulseBar/raw/main/";
+    const std::wstring manifest_path = L"docs/plugins/plugins_version.xml";
+    const bool prefer_gitee = theApp.m_general_data.update_source == 1;
+    std::wstring base_url = prefer_gitee ? gitee_base : github_base;
+    const std::wstring fallback_base = prefer_gitee ? github_base : gitee_base;
 
-    //获取url内容
+    //获取url内容：首选源失败时自动尝试另一个源
     std::string version_info;
-    if (!CCommon::GetURL(url, version_info))
-        return false;       //下载失败时保留上一次成功的版本表，不清空
+    bool fetched = CCommon::GetURL(base_url + manifest_path, version_info);
+    if (!fetched)
+    {
+        fetched = CCommon::GetURL(fallback_base + manifest_path, version_info);
+        if (fetched)
+            base_url = fallback_base;
+    }
+    if (!fetched)
+        return false;       //两个源都失败时保留上一次成功的版本表，不清空
 
     //在局部表中完成解析，成功后在锁内一次性替换共享表。
     //旧实现先 clear 共享表再边解析边 emplace，UI 线程的查询在整段
@@ -121,14 +130,16 @@ bool CPluginUpdateHelper::CheckForUpdate()
     std::vector<PluginStoreItem> store_items;
     CTinyXml2Helper::IterateChildNode(doc.RootElement(), [&](tinyxml2::XMLElement* ele) {
         PluginStoreItem item;
-        item.file_name = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "file_name"));
+        //清单是 UTF-8（XML 声明与文件实体都是），按 CP_ACP 转会把中文描述变成乱码；
+        //这里所有文本字段都显式按 UTF-8 解码。
+        item.file_name = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "file_name"), true);
         item.version = PluginVersion(std::string(CTinyXml2Helper::ElementAttribute(ele, "version")));
-        item.display_name = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "display_name"));
-        item.author = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "author"));
-        item.description = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "description"));
-        item.download_path = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "download"));
-        item.sha256 = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "sha256"));
-        item.arch = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "arch"));
+        item.display_name = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "display_name"), true);
+        item.author = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "author"), true);
+        item.description = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "description"), true);
+        item.download_path = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "download"), true);
+        item.sha256 = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "sha256"), true);
+        item.arch = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "arch"), true);
         const std::string official_flag(CTinyXml2Helper::ElementAttribute(ele, "official"));
         item.official = (official_flag == "true" || official_flag == "1");
         //缺文件名无法与本地插件匹配；缺版本的条目会让版本比较退化成 0，
@@ -141,6 +152,7 @@ bool CPluginUpdateHelper::CheckForUpdate()
     std::lock_guard<std::mutex> lock(m_version_mutex);
     m_latest_versions.swap(latest_versions);
     m_store_items.swap(store_items);
+    m_store_base_url = base_url;
     return true;
 }
 
@@ -152,10 +164,16 @@ std::vector<PluginStoreItem> CPluginUpdateHelper::GetStoreItems() const
 
 std::wstring CPluginUpdateHelper::GetStoreBaseUrl() const
 {
-    //清单与插件文件都随主仓库发布
+    //优先用「实际取到清单的那个源」：配置为 Gitee 但回退到 GitHub 时，
+    //相对下载路径必须跟随 GitHub，否则下载会打到不存在的 Gitee 仓库。
+    {
+        std::lock_guard<std::mutex> lock(m_version_mutex);
+        if (!m_store_base_url.empty())
+            return m_store_base_url;
+    }
     if (theApp.m_general_data.update_source == 1)
         return L"https://gitee.com/xiaopeng66/PulseBar/raw/main/";
-    return L"https://raw.githubusercontent.com/xiaopeng66/PulseBar/main/";
+    return L"https://github.com/xiaopeng66/PulseBar/raw/main/";
 }
 
 PluginVersion CPluginUpdateHelper::GetPluginLatestVersions(const std::wstring& file_name) const

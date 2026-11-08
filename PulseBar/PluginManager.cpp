@@ -112,6 +112,13 @@ void CPluginManager::LoadPlugins()
     //从plugins目录下加载插件
     wstring plugin_dir;
     plugin_dir = CCommon::GetModuleDir() + L"plugins";
+    //清理「覆盖已加载插件」时改名留下的 .pb-old：本次启动前它们已不再被映射
+    {
+        vector<wstring> stale_files;
+        CCommon::GetFiles((plugin_dir + L"\\*.dll.pb-old*").c_str(), stale_files);
+        for (const auto& stale : stale_files)
+            ::DeleteFileW((plugin_dir + stale).c_str());
+    }
     vector<wstring> plugin_files;
     CCommon::GetFiles((plugin_dir + L"\\*.dll").c_str(), plugin_files);		//获取Plugins目录下所有的dll文件的文件名
     for (const auto& file : plugin_files)

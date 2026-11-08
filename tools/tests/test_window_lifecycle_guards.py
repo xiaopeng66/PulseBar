@@ -19,7 +19,10 @@ class WindowLifecycleGuards(unittest.TestCase):
         host = native.method(native.source('PulseBarDlg.cpp'), 'afx_msg LRESULT CPulseBarDlg::OnTaskbarWndClosed(')
         self.assertIn('GetInstanceToken()', close)
         self.assertIn('wParam != m_tBarDlg->GetInstanceToken()', host)
-        self.assertLess(host.index('wParam != m_tBarDlg->GetInstanceToken()'), host.index('m_show_task_bar_wnd = false'))
+        # 关闭通知只清理运行时对象：显示意图只由菜单勾选改变，
+        # 否则会出现「面板在显示、菜单未勾选」并在退出时把 false 写进配置。
+        self.assertNotIn('m_show_task_bar_wnd = false', host)
+        self.assertIn('AddNotifyIcon()', host)
 
     def test_theme_transition_checks_backend_and_window_style(self):
         theme = native.method(native.source('PulseBarDlg.cpp'), 'void CPulseBarDlg::ApplyTaskbarTheme()')
@@ -52,6 +55,28 @@ class WindowLifecycleGuards(unittest.TestCase):
         method = native.method(native.source('TaskBarDlg.cpp'), 'void CTaskBarDlg::SetDPI(')
         self.assertIn('OnDpiChanged(dpi, taskbar_rect)', method)
         self.assertLess(method.index('m_taskbar_dpi = dpi'), method.index('OnDpiChanged(dpi, taskbar_rect)'))
+
+    def test_taskbar_window_is_recreated_when_missing_or_dead(self):
+        # 启动后只试一次会让「Shell 未就绪/Explorer 重启」导致面板永久缺失：
+        # 主定时器必须在用户仍希望显示时持续自愈。
+        timer = native.method(native.source('PulseBarDlg.cpp'), 'void CPulseBarDlg::OnTimer(')
+        start = timer.index('if (m_first_start)')
+        heal = timer.index('m_timer_cnt % 3 == 0')
+        self.assertGreater(heal, start)
+        section = timer[start:heal + 200]
+        self.assertIn('m_show_task_bar_wnd', section)
+        self.assertIn('!IsTaskbarWndValid()', section)
+        self.assertIn('OpenTaskBarWnd()', section)
+        # 用户主动隐藏后不能自愈重开
+        self.assertIn('theApp.m_cfg_data.m_show_task_bar_wnd && ', section)
+
+    def test_taskbar_init_aborts_are_logged(self):
+        init = native.method(native.source('TaskBarDlg.cpp'), 'BOOL CTaskBarDlg::OnInitDialog()')
+        self.assertEqual(init.count('LogTaskbarInitFailure('), 3)
+        source = native.source('TaskBarDlg.cpp')
+        self.assertIn('void LogTaskbarInitFailure(', source)
+        # 日志必须限流，自愈重试会反复走到这些分支
+        self.assertIn('logged >= 5', source)
 
 
 if __name__ == '__main__':

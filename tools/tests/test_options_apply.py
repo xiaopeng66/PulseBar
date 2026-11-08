@@ -96,6 +96,8 @@ using WORD = unsigned short;
 using BYTE = unsigned char;
 using COLORREF = unsigned long;
 using INT_PTR = intptr_t;
+// 生产代码在配置目录迁移后弹结果框；夹具里不能真的弹窗，按“已确认”返回
+inline int AfxMessageBox(const wchar_t*, unsigned int = 0, unsigned int = 0) { return 1; }
 using LRESULT = intptr_t;
 using WPARAM = uintptr_t;
 using LPARAM = intptr_t;
@@ -348,6 +350,9 @@ public:
         events.push_back("save-config");
     }
     void SaveGlobalConfig() { ++persistence.global_saves; events.push_back("save-global"); }
+    //配置目录迁移会真的搬文件，夹具里不执行：返回“未迁移、无提示”，只验证调用顺序
+    bool MigrateConfigDir(bool, CString& message) { message.clear(); return false; }
+    wstring m_history_traffic_path;
 };
 CPulseBarApp theApp;
 namespace DrawCommonHelper { enum class RenderType { GDI, D2D1_WITH_DCOMPOSITION }; }
@@ -377,6 +382,9 @@ struct CClassicalTaskbarDlg : CTaskBarDlg {};
 class CPulseBarDlg : public CWnd {
 public:
     CTaskBarDlg* m_tBarDlg{};
+    //迁移后要同步历史文件对象里的路径；夹具只记录调用，不碰真实历史
+    struct HistoryTrafficBoundary { void SetFilePath(const wstring&) {} } m_history_traffic;
+    int m_taskbar_open_failures{};      //面板创建失败计数（自愈限次用）
     void OnOptions2();
     void _OnOptions(int, CWnd*);
     void ApplySettings(COptionsDlg&);

@@ -10,10 +10,14 @@ def main():
     code=r'''
 #include <cstdint>
 #include <cstdio>
+#include <string>
 #define afx_msg
 using LRESULT=intptr_t;using WPARAM=uintptr_t;using LPARAM=intptr_t;using UINT_PTR=uintptr_t;using HWND=void*;
 int deleted{},icons{};
 bool IsWindow(HWND h){return h!=nullptr;}
+struct CCommon {
+    static void WriteLog(const wchar_t*, const wchar_t*) {}     //日志不是本用例的断言对象
+};
 struct Bar {
     UINT_PTR token{};bool valid{};
     Bar(UINT_PTR t,bool v):token(t),valid(v){}
@@ -25,6 +29,7 @@ struct App {
     struct{bool m_show_task_bar_wnd=true;}m_cfg_data;
     struct{bool show_notify_icon=true;}m_general_data;
     struct{unsigned int update_layered_window_error_code=1;}m_taskbar_data;
+    std::wstring m_log_path;
     bool IsForceShowNotifyIcon(){return true;}
 }theApp;
 struct CPulseBarDlg {
@@ -44,10 +49,20 @@ int main(){
     host.OnTaskbarWndClosed(1,0);
     check(host.m_tBarDlg && deleted==0,"queued-close-for-A-cannot-delete-invalid-but-unrelated-B");
     host.OnTaskbarWndClosed(2,0);
-    check(host.m_tBarDlg==nullptr && deleted==1 && !theApp.m_cfg_data.m_show_task_bar_wnd && theApp.m_taskbar_data.update_layered_window_error_code==0,
-          "matching-close-cleans-object-and-error-state-once");
+    // 面板意外关闭只清运行时对象，用户「要显示」的意图必须保留：
+    // 旧实现把它改成 false，导致面板在显示而菜单未勾选，退出后还写进配置。
+    check(host.m_tBarDlg==nullptr && deleted==1 && theApp.m_cfg_data.m_show_task_bar_wnd && theApp.m_taskbar_data.update_layered_window_error_code==0,
+          "matching-close-cleans-object-and-error-state-but-keeps-display-intent");
     host.OnTaskbarWndClosed(2,0);
     check(deleted==1,"duplicate-close-is-idempotent");
+
+    // 意外关闭后必须留一个入口：托盘图标关闭时自动补上
+    CPulseBarDlg second;
+    theApp.m_general_data.show_notify_icon=false;
+    second.m_tBarDlg=new Bar(3,true);
+    second.OnTaskbarWndClosed(3,0);
+    check(icons==1 && theApp.m_general_data.show_notify_icon,
+          "unexpected-close-restores-tray-icon-entry");
     return failures?1:0;
 }
 '''

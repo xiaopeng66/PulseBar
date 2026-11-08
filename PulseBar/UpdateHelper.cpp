@@ -20,41 +20,49 @@ void CUpdateHelper::SetUpdateSource(UpdateSource update_source)
 
 bool CUpdateHelper::CheckForUpdate()
 {
+    //仓库只有 main 分支。旧代码写死 master，两个源都是 404，更新检查永远失败。
+    //GitHub 侧统一用 github.com/<owner>/<repo>/raw/…：raw.githubusercontent.com
+    //在部分网络下 TLS 会被中断（实测不可达）。两个源互为回退。
+    const std::wstring github_url = L"https://github.com/xiaopeng66/PulseBar/raw/main/version_utf8.info";
+    const std::wstring gitee_url = L"https://gitee.com/xiaopeng66/PulseBar/raw/main/version_utf8.info";
+    //最后的兜底：GitHub 网页版（返回 HTML，需要把被转义的尖括号还原）
+    const std::wstring github_blob = L"https://github.com/xiaopeng66/PulseBar/blob/main/version_utf8.info";
+
+    const bool prefer_gitee = (m_update_source == UpdateSource::GiteeSource);
+    std::vector<std::wstring> sources;
+    sources.push_back(prefer_gitee ? gitee_url : github_url);
+    sources.push_back(prefer_gitee ? github_url : gitee_url);
+    sources.push_back(github_blob);     //永远放在最后：HTML 需要额外还原，能不用就不用
+
     wstring version_info;
-    //使用GitHub更新源
-    if (m_update_source == UpdateSource::GitHubSource)
+    bool fetched = false;
+    for (const auto& url : sources)
     {
-        if (CCommon::GetURL(L"https://raw.githubusercontent.com/xiaopeng66/PulseBar/master/version_utf8.info", version_info, true))     //获取版本信息
+        m_row_data = (url != github_blob);
+        if (CCommon::GetURL(url, version_info, true))
         {
-            m_row_data = true;
-        }
-        else if (CCommon::GetURL(L"https://github.com/xiaopeng66/PulseBar/blob/master/version_utf8.info", version_info, true))      //获取版本信息
-        {
-            m_row_data = false;
-        }
-        else
-        {
-            return false;
-        }
-
-        if (!m_row_data)
-        {
-            size_t index = version_info.find(L"﻿&lt;version&gt;");
-            if (index != std::wstring::npos)
-                version_info = version_info.substr(index);
-
-            CString str_version_info = version_info.c_str();
-            str_version_info.Replace(L"&lt;", L"<");
-            str_version_info.Replace(L"&gt;", L">");
-
-            version_info = str_version_info;
+            fetched = true;
+            break;
         }
     }
-    //使用Gitee更新源
-    else
+    if (!fetched)
+        return false;
+
+    if (!m_row_data)
     {
-        if (!CCommon::GetURL(L"https://gitee.com/xiaopeng66/PulseBar/raw/master/version_utf8.info", version_info, true))     //获取版本信息
-            return false;
+        //网页版把 <version> 转义成了 &lt;version&gt;，并带上页面其它内容，
+        //从第一个被转义的 <version> 开始截断再还原
+        size_t index = version_info.find(L"\uFEFF&lt;version&gt;");
+        if (index == std::wstring::npos)
+            index = version_info.find(L"&lt;version&gt;");
+        if (index != std::wstring::npos)
+            version_info = version_info.substr(index);
+
+        CString str_version_info = version_info.c_str();
+        str_version_info.Replace(L"&lt;", L"<");
+        str_version_info.Replace(L"&gt;", L">");
+
+        version_info = str_version_info;
     }
 
     ParseUpdateInfo(version_info);

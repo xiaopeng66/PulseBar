@@ -76,6 +76,12 @@ protected:
 
     bool m_first_start{ true };     //初始时为true，在定时器第一次启动后置为flase
 
+    //托盘图标添加失败时置位，由主定时器补加（登录自启动时通知区可能还没就绪）
+    bool m_notify_icon_add_pending{ false };
+
+    //任务栏面板创建失败计数：连续失败达到上限后停止自愈，避免 Shell 异常时无限重建
+    int m_taskbar_open_failures{ 0 };
+
     CSize m_screen_size;        //屏幕的大小（包含任务栏）
 
     int m_restart_cnt{ -1 };    //重新初始化次数

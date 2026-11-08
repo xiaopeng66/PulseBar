@@ -915,10 +915,12 @@ void CPulseBarDlg::OpenTaskBarWnd()
             m_tBarDlg->DestroyWindow();
         delete m_tBarDlg;
         m_tBarDlg = nullptr;
+        ++m_taskbar_open_failures;      //连续失败太多就停止自愈，避免无限重建
         return;
 
     }
 
+    m_taskbar_open_failures = 0;
     m_tBarDlg->ShowWindow(SW_SHOW);
 
     //m_tBarDlg->ShowInfo();
@@ -941,7 +943,8 @@ void CPulseBarDlg::AddNotifyIcon()
     KillTimer(DELETE_NOTIFY_ICON_TIMER);
     m_ntIcon.hIcon = GetCurrentNotifyIcon();
     m_ntIcon.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
-    if (!::Shell_NotifyIcon(NIM_ADD, &m_ntIcon))
+    m_notify_icon_add_pending = !::Shell_NotifyIcon(NIM_ADD, &m_ntIcon);
+    if (m_notify_icon_add_pending)
         m_last_notify_tip.Empty();   //添加失败不能把尚未发布的新图标当作已更新。
 
     if (theApp.m_cfg_data.m_show_task_bar_wnd)
@@ -963,6 +966,7 @@ void CPulseBarDlg::DeleteNotifyIcon()
     //删除通知栏图标
 
     ::Shell_NotifyIcon(NIM_DELETE, &m_ntIcon);
+    m_notify_icon_add_pending = false;      //用户主动移除图标：不再补加
 
     if (theApp.m_cfg_data.m_show_task_bar_wnd)
 
@@ -1611,8 +1615,11 @@ BOOL CPulseBarDlg::OnInitDialog()
     m_ntIcon.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP; //图标的属性：设置成员uCallbackMessage、hIcon、szTip有效
 
     if (theApp.m_general_data.show_notify_icon)
-
-        ::Shell_NotifyIcon(NIM_ADD, &m_ntIcon); //在系统通知区域增加这个图标
+    {
+        //登录自启动时通知区可能还没建好，NIM_ADD 会静默失败；
+        //记下失败由主定时器补加，否则托盘图标会一直缺失。
+        m_notify_icon_add_pending = !::Shell_NotifyIcon(NIM_ADD, &m_ntIcon);
+    }
 
 
 
@@ -2616,6 +2623,30 @@ void CPulseBarDlg::OnTimer(UINT_PTR nIDEvent)
 
         }
 
+        //自愈：用户仍希望显示面板，但窗口不存在或已失效时继续重试。
+        //启动早期 Shell 还没布局完（任务栏矩形为空）会让首次创建失败；
+        //旧实现只在启动后第 1 秒试一次，之后只能手动重新勾选菜单。
+        //Explorer 重启后窗口随父窗口一起销毁，也靠这里恢复。
+        if (!m_first_start && theApp.m_cfg_data.m_show_task_bar_wnd && !theApp.m_win_version.IsWine()
+            && m_timer_cnt % 3 == 0 && m_taskbar_open_failures < MAX_TASKBAR_SELF_HEAL_FAILURES)
+        {
+            if (m_tBarDlg != nullptr && !IsTaskbarWndValid())
+            {
+                delete m_tBarDlg;
+                m_tBarDlg = nullptr;
+            }
+            if (m_tBarDlg == nullptr)
+                OpenTaskBarWnd();
+        }
+
+        //托盘图标自愈：启动时 NIM_ADD 失败（通知区未就绪）就一直补加，
+        //成功后清标志，避免每秒重复添加。
+        if (m_notify_icon_add_pending && theApp.m_general_data.show_notify_icon)
+        {
+            if (::Shell_NotifyIcon(NIM_ADD, &m_ntIcon))
+                m_notify_icon_add_pending = false;
+        }
+
 
 
         if (m_timer_cnt % 2 == 1)       //每隔2秒钟获取一次屏幕尺寸（任务栏自动背景色需要）
@@ -3497,6 +3528,10 @@ void CPulseBarDlg::OnShowTaskBarWnd()
 
         theApp.m_cfg_data.m_show_task_bar_wnd = true;
 
+        m_taskbar_open_failures = 0;        //用户主动要求显示：重置自愈限次
+
+        CCommon::WriteLog(L"用户通过菜单显示任务栏面板", theApp.m_log_path.c_str());
+
         OpenTaskBarWnd();
 
     }
@@ -3506,6 +3541,8 @@ void CPulseBarDlg::OnShowTaskBarWnd()
     {
 
         theApp.m_cfg_data.m_show_task_bar_wnd = false;
+
+        CCommon::WriteLog(L"用户通过菜单隐藏任务栏面板", theApp.m_log_path.c_str());
 
         //关闭任务栏窗口后，如果没有显示通知区图标，且没有显示主窗口或设置了鼠标穿透，则将通知区图标显示出来
 
@@ -3559,7 +3596,7 @@ LRESULT CPulseBarDlg::OnTaskBarCreated(WPARAM wParam, LPARAM lParam)
         m_ntIcon.hIcon = GetCurrentNotifyIcon();
         m_ntIcon.uFlags = NIF_MESSAGE | NIF_ICON | NIF_TIP;
         ::Shell_NotifyIcon(NIM_DELETE, &m_ntIcon);
-        ::Shell_NotifyIcon(NIM_ADD, &m_ntIcon);
+        m_notify_icon_add_pending = !::Shell_NotifyIcon(NIM_ADD, &m_ntIcon);
     }
     if (taskbar_open)
         OpenTaskBarWnd();
@@ -3753,18 +3790,16 @@ afx_msg LRESULT CPulseBarDlg::OnTaskbarWndClosed(WPARAM wParam, LPARAM lParam)
         theApp.m_taskbar_data.update_layered_window_error_code = 0;
     }
 
-    theApp.m_cfg_data.m_show_task_bar_wnd = false;
+    //面板意外关闭（Shell 重建、渲染失败等）不等于用户想隐藏它：
+    //显示意图只由托盘/任务栏菜单的勾选改变，这里保留它并交给主定时器自愈重建。
+    //旧实现直接置 false，会造成「面板在显示、菜单却未勾选」，退出时还把 false 写进配置。
+    CCommon::WriteLog(L"任务栏面板意外关闭：保留显示意图，等待自动重建", theApp.m_log_path.c_str());
 
-    //关闭任务栏窗口后，如果没有显示通知区图标，且没有显示主窗口或设置了鼠标穿透，则将通知区图标显示出来
-
-    if (!theApp.m_general_data.show_notify_icon && theApp.IsForceShowNotifyIcon())
-
+    //面板没了以后必须保证还有入口能重新打开它：托盘图标
+    if (!theApp.m_general_data.show_notify_icon)
     {
-
         AddNotifyIcon();
-
         theApp.m_general_data.show_notify_icon = true;
-
     }
 
     return 0;

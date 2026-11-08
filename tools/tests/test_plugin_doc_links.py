@@ -16,9 +16,10 @@ native=importlib.util.module_from_spec(spec);spec.loader.exec_module(native)
 class PluginLinks(unittest.TestCase):
     def test_plugin_manager_links_point_to_documents_that_exist(self):
         init=native.method(native.source('PluginManagerDlg.cpp'),'BOOL CPluginManagerDlg::OnInitDialog()')
-        for file in ('downloads.md','development.md'):
-            self.assertTrue((REPO/'docs/plugins'/file).is_file(),file)
-            self.assertIn('https://github.com/xiaopeng66/PulseBar/blob/main/docs/plugins/'+file,init)
+        #「更多插件下载」改为直接打开内置插件商店；开发指南仍指向仓库文档
+        self.assertTrue((REPO/'docs/plugins'/'development.md').is_file())
+        self.assertIn('https://github.com/xiaopeng66/PulseBar/blob/main/docs/plugins/development.md',init)
+        self.assertIn('m_plugin_download_lnk.SetLinkIsURL(false)',init)
         self.assertNotIn('PulseBarPlugins',init)
         self.assertNotIn('/wiki/',init)
         self.assertIn('m_open_plugin_dir_lnk.SetLinkIsURL(false)',init)

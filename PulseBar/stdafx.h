@@ -95,6 +95,7 @@ using std::ofstream;
 
 #define MAX_INSERT_TO_TASKBAR_CNT 200     //尝试嵌入任务栏的最大次数
 #define WARN_INSERT_TO_TASKBAR_CNT 20     //尝试嵌入任务栏的警告次数
+#define MAX_TASKBAR_SELF_HEAL_FAILURES 20    //任务栏面板连续创建失败多少次后停止自愈
 
 #define APP_NAME _T("PulseBar")
 #define LEGACY_APP_NAME _T("TrafficMonitor")   //旧名称，仅用于迁移旧的自启动项
