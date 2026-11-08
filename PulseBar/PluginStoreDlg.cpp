@@ -78,6 +78,18 @@ namespace
             return false;
         if (safe_name.FindOneOf(L"\\/:*?\"<>|") >= 0)
             return false;
+        //Windows 保留设备名不能作为普通文件名：CON / PRN / AUX / NUL / COM1-9 / LPT1-9
+        CString stem = safe_name;
+        const int dot = stem.ReverseFind(L'.');
+        if (dot > 0)
+            stem = stem.Left(dot);
+        stem.MakeUpper();
+        if (stem == L"CON" || stem == L"PRN" || stem == L"AUX" || stem == L"NUL")
+            return false;
+        if (stem.GetLength() == 4
+            && (stem.Left(3) == L"COM" || stem.Left(3) == L"LPT")
+            && stem[3] >= L'1' && stem[3] <= L'9')
+            return false;
         return true;
     }
 

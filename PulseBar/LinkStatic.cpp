@@ -193,6 +193,13 @@ void CLinkStatic::OnPaint()
 	{
 		dc.DrawText(text, rect, DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
 	}
+	//键盘聚焦时画焦点框，否则用户看不出 Tab 停在哪个链接上
+	if (GetFocus() == this && IsWindowVisible())
+	{
+		CRect focus_rect{ rect };
+		focus_rect.DeflateRect(1, 1);
+		dc.DrawFocusRect(&focus_rect);
+	}
 }
 
 
