@@ -2408,7 +2408,14 @@ void CPulseBarDlg::DoMonitorAcquisition()
 
         {
 
-            plugin_info.plugin->DataRequired();
+            try
+            {
+                plugin_info.plugin->DataRequired();
+            }
+            catch (...)
+            {
+                LogPluginCallbackFailure(L"ITMPlugin::DataRequired");
+            }
 
             ITMPlugin::MonitorInfo monitor_info;
 
@@ -2434,7 +2441,14 @@ void CPulseBarDlg::DoMonitorAcquisition()
 
             monitor_info.main_board_temperature = theApp.m_main_board_temperature;
 
-            plugin_info.plugin->OnMonitorInfo(monitor_info);
+            try
+            {
+                plugin_info.plugin->OnMonitorInfo(monitor_info);
+            }
+            catch (...)
+            {
+                LogPluginCallbackFailure(L"ITMPlugin::OnMonitorInfo");
+            }
 
         }
 

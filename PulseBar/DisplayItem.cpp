@@ -1,4 +1,5 @@
 ﻿#include "stdafx.h"
+#include "PluginManager.h"
 #include "DisplayItem.h"
 #include "Common.h"
 #include "PulseBar.h"
@@ -212,9 +213,19 @@ CString CommonDisplayItem::GetItemValueText(bool is_main_window) const
 {
     if (is_plugin)
     {
-        if (plugin_item != nullptr && plugin_item->GetItemValueText() != nullptr)
-            return plugin_item->GetItemValueText();
-        return CString();
+        if (plugin_item == nullptr)
+            return CString();
+        //插件取值回调可能在插件代码里崩溃（/EHa 下可捕获），绝不能让绘制/采样路径被带崩
+        try
+        {
+            const wchar_t* text = plugin_item->GetItemValueText();
+            return text != nullptr ? CString(text) : CString();
+        }
+        catch (...)
+        {
+            LogPluginCallbackFailure(L"IPluginItem::GetItemValueText");
+            return CString();
+        }
     }
     else
     {

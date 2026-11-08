@@ -34,13 +34,23 @@ static wstring WcharArrayToWString(const wchar_t* str)
 
 //第三方插件运行在宿主进程内，回调抛出的 C++ 异常不能越过宿主边界。
 //日志本身也不能把故障升级成崩溃，所以这里故意使用 noexcept 并保护日志调用。
-static void LogPluginCallbackFailure(const wchar_t* callback_name) noexcept
+void LogPluginCallbackFailure(const wchar_t* callback_name) noexcept
 {
+    //绘制类回调每帧都可能崩溃：按名称限流（首次 + 每 1000 次），避免刷爆日志
+    static std::mutex log_mutex;
+    static std::map<std::wstring, unsigned> failure_counts;
     try
     {
+        std::lock_guard<std::mutex> lock(log_mutex);
+        std::wstring name{ callback_name != nullptr ? callback_name : L"<unknown>" };
+        unsigned& count = failure_counts[name];
+        ++count;
+        if (count != 1 && count % 1000 != 0)
+            return;
         std::wstring message{ L"插件 API 回调异常：" };
-        message += callback_name != nullptr ? callback_name : L"<unknown>";
-        message += L"，已使用安全默认值。";
+        message += name;
+        message += L"，已使用安全默认值。累计次数：";
+        message += std::to_wstring(count);
         CCommon::WriteLog(message.c_str(), theApp.m_log_path.c_str());
     }
     catch (...)

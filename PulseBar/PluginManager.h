@@ -7,6 +7,9 @@
 typedef ITMPlugin* (*pfTMPluginGetInstance)();
 
 //用于加载和管理插件
+//记录插件回调异常（内部按名称限流，绘制类回调不会刷爆日志）
+void LogPluginCallbackFailure(const wchar_t* callback_name) noexcept;
+
 class CPluginManager
 {
 public:
