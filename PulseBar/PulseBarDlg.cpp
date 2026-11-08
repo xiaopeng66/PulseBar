@@ -185,6 +185,7 @@ BEGIN_MESSAGE_MAP(CPulseBarDlg, CDialog)
     ON_COMMAND(ID_NETWORK_INFO, &CPulseBarDlg::OnNetworkInfo)
     ON_WM_CLOSE()
     ON_MESSAGE(PB_QUIT_REQUEST_MESSAGE, &CPulseBarDlg::OnQuitRequest)
+    ON_MESSAGE(PB_ALREADY_RUNNING_MESSAGE, &CPulseBarDlg::OnAlreadyRunning)
     ON_MESSAGE(WM_RESTART_FOR_PLUGIN, &CPulseBarDlg::OnRestartForPlugin)
     ON_MESSAGE(MY_WM_NOTIFYICON, &CPulseBarDlg::OnNotifyIcon)
     ON_COMMAND(ID_SHOW_NOTIFY_ICON, &CPulseBarDlg::OnShowNotifyIcon)
@@ -3030,6 +3031,13 @@ void CPulseBarDlg::OnClose()
 
     CDialog::OnClose();
 
+}
+
+LRESULT CPulseBarDlg::OnAlreadyRunning(WPARAM, LPARAM)
+{
+    //重复启动：只提示，不改变任何状态
+    ShowNotifyTip(APP_NAME, CCommon::LoadText(IDS_ALREADY_RUNNING_TIP));
+    return 0;
 }
 
 LRESULT CPulseBarDlg::OnQuitRequest(WPARAM, LPARAM)

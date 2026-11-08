@@ -1518,15 +1518,17 @@ BOOL CPulseBarApp::InitInstance()
 
     //已有实例在运行时，先请求它退出，再接手单实例互斥量。
     //这样双击新版本即可完成替换，不需要用户手动退出旧实例。
-    //已有实例在运行：本次启动静默退出，对已运行实例不做任何动作。
-    //（不杀进程、不发消息、不弹窗——双击 exe 时用户不应看到任何变化）
-    //升级由安装器负责：NSIS 安装段会先关闭运行中的实例。
+    //已有实例在运行：让它弹一条「已在运行」的托盘气泡，本实例随即退出。
+    //不杀进程、不重建面板；升级由安装器负责（NSIS 安装段会先关闭运行中的实例）。
     HANDLE hMutex = ::CreateMutex(NULL, TRUE, mutex_name);
     if (hMutex == nullptr)
         return FALSE;
     if (::GetLastError() == ERROR_ALREADY_EXISTS)
     {
         ::CloseHandle(hMutex);
+        HWND h_existing = ::FindWindow(APP_CLASS_NAME, nullptr);
+        if (h_existing != nullptr)
+            ::PostMessage(h_existing, PB_ALREADY_RUNNING_MESSAGE, 0, 0);
         return FALSE;
     }
 
