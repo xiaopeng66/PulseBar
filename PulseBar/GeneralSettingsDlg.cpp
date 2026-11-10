@@ -73,7 +73,6 @@ static const TemplateControl k_general_template_controls[] = {
     { 206, 988, 104, 18, true, 2 },  // IDC_CHECK_NOW_BUTTON
     { 18, 1016, 90, 10, true, 2 },  // IDC_UPDATE_SORUCE_STATIC
     { 112, 1014, 90, 12, true, 2 },  // IDC_GITHUB_RADIO
-    { 214, 1014, 96, 12, true, 2 },  // IDC_GITEE_RADIO
 };
 #include "PluginManagerDlg.h"
 #include "SelectConnectionsDlg.h"
@@ -246,7 +245,6 @@ BEGIN_MESSAGE_MAP(CGeneralSettingsDlg, CTabDlg)
     ON_BN_CLICKED(IDC_HDD_TEMP_TIP_CHECK, &CGeneralSettingsDlg::OnBnClickedHddTempTipCheck)
     ON_BN_CLICKED(IDC_MBD_TEMP_TIP_CHECK, &CGeneralSettingsDlg::OnBnClickedMbdTempTipCheck)
     ON_BN_CLICKED(IDC_GITHUB_RADIO, &CGeneralSettingsDlg::OnBnClickedGithubRadio)
-    ON_BN_CLICKED(IDC_GITEE_RADIO, &CGeneralSettingsDlg::OnBnClickedGiteeRadio)
     ON_BN_CLICKED(IDC_RESTORE_DEFAULT_TIME_SPAN_BUTTON, &CGeneralSettingsDlg::OnBnClickedRestoreDefaultTimeSpanButton)
     ON_CBN_SELCHANGE(IDC_SELECT_HARD_DISK_COMBO, &CGeneralSettingsDlg::OnCbnSelchangeSelectHardDiskCombo)
     ON_BN_CLICKED(IDC_CPU_CHECK, &CGeneralSettingsDlg::OnBnClickedCpuCheck)
@@ -289,10 +287,7 @@ BOOL CGeneralSettingsDlg::OnInitDialog()
     CheckDlgButton(IDC_NOTIFY_ICON_SHOW_SPEED_CHECK, m_data.notify_icon_show_speed);
     EnableDlgCtrl(IDC_NOTIFY_ICON_SHOW_SPEED_CHECK, m_data.show_notify_icon);
 
-    if (m_data.update_source == 0)
-        CheckDlgButton(IDC_GITHUB_RADIO, TRUE);
-    else
-        CheckDlgButton(IDC_GITEE_RADIO, TRUE);
+    CheckDlgButton(IDC_GITHUB_RADIO, TRUE);      //更新源固定为 GitHub，不再提供 Gitee
 
     //检查开始菜单的“启动”目录下有没有程序的快捷方式，如果有则设置开机自启动，然后删除快捷方式
     wstring start_up_path = CCommon::GetStartUpPath();
@@ -830,14 +825,6 @@ void CGeneralSettingsDlg::OnBnClickedGithubRadio()
     // TODO: 在此添加控件通知处理程序代码
     m_data.update_source = 0;
     theApp.m_general_data.update_source = 0;        //点击“更新源”的单选按钮时，同时更改theApp中的设置，以确保点击“立即检查”按钮时使用选择的更新源更新
-}
-
-
-void CGeneralSettingsDlg::OnBnClickedGiteeRadio()
-{
-    // TODO: 在此添加控件通知处理程序代码
-    m_data.update_source = 1;
-    theApp.m_general_data.update_source = 1;
 }
 
 

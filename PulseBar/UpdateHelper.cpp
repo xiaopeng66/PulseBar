@@ -13,26 +13,19 @@ CUpdateHelper::~CUpdateHelper()
 {
 }
 
-void CUpdateHelper::SetUpdateSource(UpdateSource update_source)
-{
-    m_update_source = update_source;
-}
-
 bool CUpdateHelper::CheckForUpdate()
 {
     //仓库只有 main 分支。旧代码写死 master，两个源都是 404，更新检查永远失败。
     //GitHub 侧统一用 github.com/<owner>/<repo>/raw/…：raw.githubusercontent.com
     //在部分网络下 TLS 会被中断（实测不可达）。两个源互为回退。
     const std::wstring github_url = L"https://github.com/xiaopeng66/PulseBar/raw/main/version_utf8.info";
-    const std::wstring gitee_url = L"https://gitee.com/xiaopeng66/PulseBar/raw/main/version_utf8.info";
     //最后的兜底：GitHub 网页版（返回 HTML，需要把被转义的尖括号还原）
     const std::wstring github_blob = L"https://github.com/xiaopeng66/PulseBar/blob/main/version_utf8.info";
 
-    const bool prefer_gitee = (m_update_source == UpdateSource::GiteeSource);
+    //Gitee 仓库不存在，更新源固定为 GitHub；网页版只作为兜底
     std::vector<std::wstring> sources;
-    sources.push_back(prefer_gitee ? gitee_url : github_url);
-    sources.push_back(prefer_gitee ? github_url : gitee_url);
-    sources.push_back(github_blob);     //永远放在最后：HTML 需要额外还原，能不用就不用
+    sources.push_back(github_url);
+    sources.push_back(github_blob);
 
     wstring version_info;
     bool fetched = false;
@@ -90,7 +83,7 @@ void CUpdateHelper::ParseUpdateInfo(wstring version_info)
         }
     }
 
-    wstring str_source_tag = (m_update_source == UpdateSource::GitHubSource ? L"GitHub" : L"Gitee");
+    const wstring str_source_tag = L"GitHub";
     wstring str_link_tag, str_link_tag_x64, str_link_tag_arm64ec;
 #ifdef WITHOUT_TEMPERATURE
     str_link_tag = L"link_without_temperature";

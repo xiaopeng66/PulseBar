@@ -114,7 +114,6 @@ public:
     afx_msg void OnBnClickedHddTempTipCheck();
     afx_msg void OnBnClickedMbdTempTipCheck();
     afx_msg void OnBnClickedGithubRadio();
-    afx_msg void OnBnClickedGiteeRadio();
     virtual void OnCancel();
     afx_msg void OnBnClickedRestoreDefaultTimeSpanButton();
     afx_msg void OnCbnSelchangeSelectHardDiskCombo();

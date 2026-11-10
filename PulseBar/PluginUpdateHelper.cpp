@@ -99,26 +99,14 @@ bool CPluginUpdateHelper::CheckForUpdate()
 
     //插件商店版本表随主仓库发布。注意 GitHub 侧必须用 github.com/<owner>/<repo>/raw/…，
     //raw.githubusercontent.com 在部分网络下 TLS 会被中断（实测不可达）。
-    //Gitee 镜像可能不存在（当前仓库返回 404），两个源互为回退；清单里的相对下载路径
-    //要跟随「实际取到清单的那个源」，否则回退后下载链接还会打到失效源。
+    //更新源固定为 GitHub（Gitee 仓库不存在）。
     const std::wstring github_base = L"https://github.com/xiaopeng66/PulseBar/raw/main/";
-    const std::wstring gitee_base = L"https://gitee.com/xiaopeng66/PulseBar/raw/main/";
     const std::wstring manifest_path = L"docs/plugins/plugins_version.xml";
-    const bool prefer_gitee = theApp.m_general_data.update_source == 1;
-    std::wstring base_url = prefer_gitee ? gitee_base : github_base;
-    const std::wstring fallback_base = prefer_gitee ? github_base : gitee_base;
 
-    //获取url内容：首选源失败时自动尝试另一个源
     std::string version_info;
-    bool fetched = CCommon::GetURL(base_url + manifest_path, version_info);
+    const bool fetched = CCommon::GetURL(github_base + manifest_path, version_info);
     if (!fetched)
-    {
-        fetched = CCommon::GetURL(fallback_base + manifest_path, version_info);
-        if (fetched)
-            base_url = fallback_base;
-    }
-    if (!fetched)
-        return false;       //两个源都失败时保留上一次成功的版本表，不清空
+        return false;       //拉取失败时保留上一次成功的版本表，不清空
 
     //在局部表中完成解析，成功后在锁内一次性替换共享表。
     //旧实现先 clear 共享表再边解析边 emplace，UI 线程的查询在整段
@@ -152,7 +140,6 @@ bool CPluginUpdateHelper::CheckForUpdate()
     std::lock_guard<std::mutex> lock(m_version_mutex);
     m_latest_versions.swap(latest_versions);
     m_store_items.swap(store_items);
-    m_store_base_url = base_url;
     return true;
 }
 
@@ -164,15 +151,7 @@ std::vector<PluginStoreItem> CPluginUpdateHelper::GetStoreItems() const
 
 std::wstring CPluginUpdateHelper::GetStoreBaseUrl() const
 {
-    //优先用「实际取到清单的那个源」：配置为 Gitee 但回退到 GitHub 时，
-    //相对下载路径必须跟随 GitHub，否则下载会打到不存在的 Gitee 仓库。
-    {
-        std::lock_guard<std::mutex> lock(m_version_mutex);
-        if (!m_store_base_url.empty())
-            return m_store_base_url;
-    }
-    if (theApp.m_general_data.update_source == 1)
-        return L"https://gitee.com/xiaopeng66/PulseBar/raw/main/";
+    //清单与插件文件都随主仓库发布，更新源固定为 GitHub
     return L"https://github.com/xiaopeng66/PulseBar/raw/main/";
 }
 

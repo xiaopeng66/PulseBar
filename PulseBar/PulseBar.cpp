@@ -74,9 +74,8 @@ void CPulseBarApp::LoadConfig()
     //m_general_data.allow_skin_cover_font = ini.GetBool(_T("general"), _T("allow_skin_cover_font"), true);
     //m_general_data.allow_skin_cover_text = ini.GetBool(_T("general"), _T("allow_skin_cover_text"), true);
     m_general_data.show_all_interface = ini.GetBool(L"general", L"show_all_interface", false);
-    //默认走 GitHub（插件清单和 Release 资产都在那边）；Gitee 仓库当前不存在，
-    //只在用户显式选择时先试，失败后由 GetURL 回退到 GitHub。
-    m_general_data.update_source = ini.GetInt(L"general", L"update_source", 0);
+    //更新源固定为 GitHub（Gitee 仓库不存在）；旧配置里的 update_source 一律忽略
+    m_general_data.update_source = 0;
     m_general_data.cpu_usage_acquire_method = static_cast<GeneralSettingData::CpuUsageAcquireMethod>(ini.GetInt(L"general", L"cpu_usage_acquire_method", GeneralSettingData::CA_PDH));
     //只有 CA_CPU_TIME(0)/CA_PDH(1) 两种方式；越界值会让两个单选框都不选中，界面看起来像“没有设置”
     if (static_cast<int>(m_general_data.cpu_usage_acquire_method) < static_cast<int>(GeneralSettingData::CA_CPU_TIME)
@@ -859,7 +858,6 @@ void CPulseBarApp::CheckUpdate(bool message)
     wstring contents_en;    //更新内容（English）
     wstring contents_zh_tw; //更新内容（繁体中文）
     CUpdateHelper update_helper;
-    update_helper.SetUpdateSource(static_cast<CUpdateHelper::UpdateSource>(m_general_data.update_source));
     if (!update_helper.CheckForUpdate())
     {
         if (message)
@@ -2067,18 +2065,14 @@ void CPulseBarApp::OnHelp()
 void CPulseBarApp::OnFrequentyAskedQuestions()
 {
     // TODO: 在此添加命令处理程序代码
-    CString url_domain;
-    if (static_cast<CUpdateHelper::UpdateSource>(m_general_data.update_source) == CUpdateHelper::UpdateSource::GiteeSource)
-        url_domain = _T("gitee.com");
-    else
-        url_domain = _T("github.com");
+    const CString url_domain = _T("github.com");      //更新源固定为 GitHub
     CString file_name;
     if (m_str_table.IsSimplifiedChinese())
         file_name = _T("Help.md");
     else
         file_name = _T("Help_en-us.md");
     CString url;
-    url.Format(_T("https://%s/xiaopeng66/PulseBar/blob/master/%s"), url_domain.GetString(), file_name.GetString());
+    url.Format(_T("https://%s/xiaopeng66/PulseBar/blob/main/%s"), url_domain.GetString(), file_name.GetString());
     ShellExecute(NULL, _T("open"), url, NULL, NULL, SW_SHOW);
 }
 
@@ -2086,11 +2080,7 @@ void CPulseBarApp::OnFrequentyAskedQuestions()
 void CPulseBarApp::OnUpdateLog()
 {
     // TODO: 在此添加命令处理程序代码
-    CString url_domain;
-    if (static_cast<CUpdateHelper::UpdateSource>(m_general_data.update_source) == CUpdateHelper::UpdateSource::GiteeSource)
-        url_domain = _T("gitee.com");
-    else
-        url_domain = _T("github.com");
+    const CString url_domain = _T("github.com");      //更新源固定为 GitHub
     wstring language_tag = m_str_table.GetLanguageInfo().bcp_47;
     CString file_name;
     if (language_tag == L"zh-CN")
@@ -2100,7 +2090,7 @@ void CPulseBarApp::OnUpdateLog()
     else
         file_name = _T("update_log_en-us.md");
     CString url;
-    url.Format(_T("https://%s/xiaopeng66/PulseBar/blob/master/UpdateLog/%s"), url_domain.GetString(), file_name.GetString());
+    url.Format(_T("https://%s/xiaopeng66/PulseBar/blob/main/UpdateLog/%s"), url_domain.GetString(), file_name.GetString());
     ShellExecute(NULL, _T("open"), url, NULL, NULL, SW_SHOW);
 }
 

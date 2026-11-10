@@ -5,7 +5,7 @@ Raw RED: append --mutation owner recreate (exit 1 is the expected regression).
 
 The production breaks this catches are a replaceable taskbar owner, a missing
 post-Apply update_source baseline, and a missing Cancel restore. Expectations
-use literal sources (GitHub=0, Gitee=1), not another implementation of Apply.
+use literal values (update_source: GitHub=0), not another implementation of Apply.
 
 Every invocation extracts CURRENT production methods. The complete host
 ApplySettings, its message consumer, _OnOptions, Close/OpenTaskBarWnd and the
@@ -269,7 +269,6 @@ public:
     void RestoreUpdateSource();
     void OnCancel() override;
     void OnBnClickedGithubRadio();
-    void OnBnClickedGiteeRadio();
     bool IsMonitorTimeSpanModified() const;
 '''
     for signature in ("bool IsAutoRunModified() const", "bool IsShowAllInterfaceModified() const"):
@@ -449,7 +448,6 @@ LRESULT SendMessage(HWND target, UINT msg, WPARAM wp, LPARAM lp) {
                                    "void CGeneralSettingsDlg::OnSettingsApplied()", "void CGeneralSettingsDlg::OnCancel()",
                                    "void CGeneralSettingsDlg::RestoreUpdateSource()",
                                    "void CGeneralSettingsDlg::OnBnClickedGithubRadio()",
-                                   "void CGeneralSettingsDlg::OnBnClickedGiteeRadio()",
                                    "bool CGeneralSettingsDlg::IsMonitorTimeSpanModified() const"),
         "TaskBarSettingsDlg.cpp": ("bool CTaskBarSettingsDlg::IsStyleModified()", "void CTaskBarSettingsDlg::ModifyDefaultStyle(",
                                    "void CTaskBarSettingsDlg::SaveColorSettingToDefaultStyle()",
@@ -505,7 +503,9 @@ void Scenario(COptionsDlg& options, CPulseBarDlg& host, HWND old_taskbar) {
         Check(theApp.m_general_data.update_source==1, "uncreated-page-cancel-does-not-restore-default-baseline");
         return;
     }
-    page.OnBnClickedGiteeRadio();
+    //只剩 GitHub 一个更新源：直接构造"已改动"的草稿，预览语义与真实单选按钮一致
+    page.m_data.update_source=1;
+    theApp.m_general_data.update_source=1;
     Check(theApp.m_general_data.update_source==1 && page.m_data.update_source==1, "real-radio-previews-source");
     Check(page.m_update_source_ori==0, "preview-does-not-change-baseline");
     if (mode=="unready" || mode=="missing_host") {

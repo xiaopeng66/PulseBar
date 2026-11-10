@@ -8,14 +8,6 @@
 		<link_without_temperature_x64>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.1/PulseBar_V1.1.1_x64.zip</link_without_temperature_x64>
 		<link_without_temperature_arm64ec>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.1/PulseBar_V1.1.1_arm64ec.zip</link_without_temperature_arm64ec>
 	</GitHub>
-	<Gitee>
-		<link>https://gitee.com/xiaopeng66/PulseBar/releases/download/V1.1.1/PulseBar_V1.1.1_x86.zip</link>
-		<link_x64>https://gitee.com/xiaopeng66/PulseBar/releases/download/V1.1.1/PulseBar_V1.1.1_x64.zip</link_x64>
-		<link_arm64ec>https://gitee.com/xiaopeng66/PulseBar/releases/download/V1.1.1/PulseBar_V1.1.1_arm64ec.zip</link_arm64ec>
-		<link_without_temperature>https://gitee.com/xiaopeng66/PulseBar/releases/download/V1.1.1/PulseBar_V1.1.1_x86.zip</link_without_temperature>
-		<link_without_temperature_x64>https://gitee.com/xiaopeng66/PulseBar/releases/download/V1.1.1/PulseBar_V1.1.1_x64.zip</link_without_temperature_x64>
-		<link_without_temperature_arm64ec>https://gitee.com/xiaopeng66/PulseBar/releases/download/V1.1.1/PulseBar_V1.1.1_arm64ec.zip</link_without_temperature_arm64ec>
-	</Gitee>
 	<update_contents>
 		<contents_zh_cn>插件商店修复：清单双源回退（Gitee 仓库不存在时自动改用 GitHub），中文说明不再乱码，打开商店不再卡顿。
 修正“检查更新”始终失败的问题。
