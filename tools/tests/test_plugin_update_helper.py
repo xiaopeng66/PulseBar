@@ -158,7 +158,7 @@ static const char* k_xml_swapped =
     "</plugins>\n";
 static const char* k_xml_utf8_text =
     "<plugins>\n"
-    "  <plugin file_name=\"MagpieTaskbar.dll\" version=\"3.12.0\" display_name=\"Magpie\""
+    "  <plugin file_name=\"MagpieTaskbar.dll\" version=\"1.0.0\" display_name=\"Magpie\""
     " description=\"\xE7\xBC\xA9\xE6\x94\xBE\"/>\n"
     "</plugins>\n";
 

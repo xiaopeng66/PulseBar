@@ -23,12 +23,12 @@
 <plugins>
     <plugin
         file_name="MagpieTaskbar.dll"
-        version="3.12.0"
+        version="1.0.0"
         display_name="Magpie Taskbar"
         author="xiaopeng66"
         description="任务栏 Magpie 缩放控制面板"
-        download="https://github.com/xiaopeng66/PulseBar/releases/download/plugins-v3.12.0/MagpieTaskbar.dll"
-        sha256="05ccf9434da4dbad8ab9365e8f555afdf88c248a2aa5b007bbc2e5a44e92f228"
+        download="https://github.com/xiaopeng66/PulseBar/releases/download/plugins-v1.0.0/MagpieTaskbar.dll"
+        sha256="3dae66e50ccfe21d03996af977277b332c1c401c3d46bb4f5f983c39d5f38f9c"
         arch="x64"
         official="true" />
 </plugins>
