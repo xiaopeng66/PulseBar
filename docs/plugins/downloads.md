@@ -7,7 +7,7 @@
 
 | 插件 | 版本 | 架构 | 下载 | SHA-256 |
 | --- | --- | --- | --- | --- |
-| Magpie Taskbar | 1.0.0 | x64 | [MagpieTaskbar.dll](https://github.com/xiaopeng66/PulseBar/releases/download/plugins-v1.0.0/MagpieTaskbar.dll) | `3dae66e50ccfe21d03996af977277b332c1c401c3d46bb4f5f983c39d5f38f9c` |
+| Magpie Taskbar | 1.0.0 | x64 | [MagpieTaskbar.dll](https://github.com/xiaopeng66/PulseBar/releases/download/plugins-v1.0.0/MagpieTaskbar.dll) | `83679c2dcd122f32d2f99164ed4239040191a157d79a98dab71b832c8e07f013` |
 
 插件二进制放在 [插件 Release](https://github.com/xiaopeng66/PulseBar/releases/tag/plugins-v1.0.0) 里，不进仓库，避免仓库随每次插件更新膨胀。`plugins_version.xml` 的 `download` 字段直接指向 Release 资产。
 

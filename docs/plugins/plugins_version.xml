@@ -28,7 +28,7 @@
         author="xiaopeng66"
         description="任务栏 Magpie 缩放控制面板"
         download="https://github.com/xiaopeng66/PulseBar/releases/download/plugins-v1.0.0/MagpieTaskbar.dll"
-        sha256="3dae66e50ccfe21d03996af977277b332c1c401c3d46bb4f5f983c39d5f38f9c"
+        sha256="83679c2dcd122f32d2f99164ed4239040191a157d79a98dab71b832c8e07f013"
         arch="x64"
         official="true" />
 </plugins>
