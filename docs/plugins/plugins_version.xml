@@ -26,9 +26,9 @@
         version="1.0.0"
         display_name="Magpie Taskbar"
         author="xiaopeng66"
-        description="Magpie 多账号额度面板，支持每个账号单选额度并实时调整任务栏"
+        description="Magpie 多账号额度面板，支持额度单选、任务栏实时调整及供应商 Logo 自动适配"
         download="https://github.com/xiaopeng66/PulseBar/releases/download/plugins-v1.0.0/MagpieTaskbar.dll"
-        sha256="2397bf0f8f38a0b903f3e0178de871d517a4c21b65a42bcf7ece3bed47435ecb"
+        sha256="2678fb972c93b12e15b4261674cb1c99dbc446e71407d627518c625f1c9ffc75"
         arch="x64"
         official="true" />
 </plugins>
