@@ -1,44 +1,47 @@
 ﻿#pragma once
 #include "BaseDialog.h"
 #include "PluginUpdateHelper.h"
+#include <future>
 
 //插件商店：列出云端清单里的插件，选择后下载到 plugins 目录
 class CPluginStoreDlg : public CBaseDialog
 {
     DECLARE_DYNAMIC(CPluginStoreDlg)
 public:
-    CPluginStoreDlg(CWnd* pParent = nullptr);
+    CPluginStoreDlg(CWnd* pParent = nullptr, const std::wstring& selected_file = {});
     virtual ~CPluginStoreDlg();
 
     enum { IDD = IDD_PLUGIN_STORE_DIALOG };
 
-    //是否需要在关闭后重启程序以加载新装的插件
-    bool m_restart_required{ false };
-
 protected:
-    virtual void DoDataExchange(CDataExchange* pDX);
+    virtual void OnOK() override {}     //仅显式选择重启时以 IDOK 退出
     DECLARE_MESSAGE_MAP()
 
 public:
     virtual BOOL OnInitDialog();
     afx_msg void OnBnClickedStoreRefresh();
     afx_msg void OnBnClickedStoreInstall();
-    afx_msg void OnNMClickStoreList(NMHDR* pNMHDR, LRESULT* pResult);
     afx_msg void OnLvnItemchangedStoreList(NMHDR* pNMHDR, LRESULT* pResult);
     afx_msg void OnNMDblclkStoreList(NMHDR* pNMHDR, LRESULT* pResult);
     afx_msg void OnSize(UINT nType, int cx, int cy);
-    afx_msg LRESULT OnStoreFetchDone(WPARAM wParam, LPARAM lParam);   //后台拉取完成
+    afx_msg void OnTimer(UINT_PTR timer);
 
 private:
-    void RefreshList();             //只按已有快照填充列表，不发起网络请求
-    void StartFetch();              //后台线程拉取清单，完成后再回到 UI 线程刷新
-    void UpdateDescription();
+    struct Download;
+    void RefreshList();
+    void StartFetch();
+    void FinishDownload();
+    void UpdateControls();
     void ResizeColumns();
     int GetSelectedIndex() const;
-    int FindLocalState(const PluginStoreItem& item) const;   //0=未安装 1=已安装
+    PluginStoreState FindLocalState(const PluginStoreItem& item, PluginVersion& local_version) const;
 
     CListCtrl m_list;
     std::vector<PluginStoreItem> m_items;
-    bool m_fetch_failed{ false };
-    bool m_fetching{ false };       //后台拉取进行中：重复点击刷新不再起第二个线程
+    std::wstring m_preferred_file;
+    CPluginUpdateHelper::Status m_catalog_status{ CPluginUpdateHelper::Status::Idle };
+    bool m_has_snapshot{ false };
+    int m_update_count{ 0 };
+    int m_download_index{ -1 };
+    std::future<std::shared_ptr<Download>> m_download;
 };

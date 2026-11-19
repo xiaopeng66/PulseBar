@@ -9,6 +9,16 @@
 #include "PluginStoreDlg.h"
 #include "WIC.h"
 
+namespace
+{
+    constexpr UINT_PTR CatalogTimer = 1;
+
+    void RequestPluginRestart()
+    {
+        if (theApp.m_pMainWnd != nullptr && ::IsWindow(theApp.m_pMainWnd->GetSafeHwnd()))
+            ::PostMessage(theApp.m_pMainWnd->GetSafeHwnd(), WM_RESTART_FOR_PLUGIN, 0, 0);
+    }
+}
 
 // CPluginManagerDlg 对话框
 
@@ -38,6 +48,22 @@ void CPluginManagerDlg::EnableControl()
     bool enable{ IsSelectedPluginEnable() };
     EnableDlgCtrl(IDC_OPTINS_BUTTON, enable);
     EnableDlgCtrl(IDC_PLUGIN_INFO_BUTTON, enable);
+
+    m_selected_update_file.clear();
+    if (IsSelectedValid())
+    {
+        const auto& plugin = theApp.m_plugins.GetPlugins()[m_item_selected];
+        const auto file_name = CFilePathHelper(plugin.file_path).GetFileName();
+        const auto catalog = theApp.m_plugin_update.GetCatalog();
+        const auto* store_item = FindPluginStoreItem(catalog.items, file_name);
+        if (store_item != nullptr && GetPluginStoreState(*store_item, true,
+            PluginVersion(plugin.Property(ITMPlugin::TMI_VERSION)), theApp.m_plugin_update.GetPendingVersion(file_name))
+            == PluginStoreState::UpdateAvailable)
+            m_selected_update_file = file_name;
+    }
+    const bool restart = theApp.m_plugin_update.HasPendingRestart() && m_selected_update_file.empty();
+    SetDlgItemText(IDC_PLUGIN_MANAGE_UPDATE, CCommon::LoadText(restart ? TXT_PLUGIN_RESTART : TXT_PLUGIN_OPEN_UPDATE));
+    EnableDlgCtrl(IDC_PLUGIN_MANAGE_UPDATE, restart || !m_selected_update_file.empty());
 }
 
 bool CPluginManagerDlg::IsSelectedValid()
@@ -69,18 +95,10 @@ void CPluginManagerDlg::ResizeColumns()
     m_list_ctrl.GetClientRect(&rect);
     if (rect.Width() <= 0)
         return;
-    const int usable = max(COL_MAX, rect.Width() - theApp.DPI(20) - 1);
-    //五列：文件名 / 名称 / 来源 / 版本 / 状态
-    const int width0 = max(1, usable * 25 / 100);
-    const int width1 = max(1, usable * 27 / 100);
-    const int source_width = max(1, usable * 12 / 100);
-    const int width3 = max(1, usable * 15 / 100);
-    const int width2 = max(1, usable - width0 - width1 - source_width - width3);
-    m_list_ctrl.SetColumnWidth(COL_FILE_NAME, width0);
-    m_list_ctrl.SetColumnWidth(COL_NAME, width1);
-    m_list_ctrl.SetColumnWidth(COL_SOURCE, source_width);
-    m_list_ctrl.SetColumnWidth(COL_VERSION, width2);
-    m_list_ctrl.SetColumnWidth(COL_STATUS, width3);
+    const int usable = max(COL_MAX, rect.Width() - theApp.DPI(18));
+    const int widths[] = { 25, 22, 10, 12, 14, 17 };
+    for (int column = 0; column < COL_MAX; ++column)
+        m_list_ctrl.SetColumnWidth(column, max(1, usable * widths[column] / 100));
 }
 
 CString CPluginManagerDlg::GetDialogName() const
@@ -92,10 +110,10 @@ bool CPluginManagerDlg::InitializeControls()
 {
     RepositionTextBasedControls({
         { CtrlTextInfo::L4, IDC_PLUGIN_INFO_BUTTON, CtrlTextInfo::W32 },
-        { CtrlTextInfo::L3, IDC_OPTINS_BUTTON, CtrlTextInfo::W32 }
+        { CtrlTextInfo::L3, IDC_OPTINS_BUTTON, CtrlTextInfo::W32 },
+        { CtrlTextInfo::L2, IDC_INSTALL_PLUGIN_BUTTON, CtrlTextInfo::W24 },
+        { CtrlTextInfo::R1, IDCANCEL, CtrlTextInfo::W24 }
     });
-    //按文本加宽后可能越过安装按钮（日语/韩语等长文案）：重排安装按钮，避免重叠
-    RepositionInstallButton();
     RepositionTextBasedControls({
         { CtrlTextInfo::L4, IDC_PLUGIN_DOWNLOAD_STATIC },
         { CtrlTextInfo::L3, IDC_PLUGIN_DEV_GUID_STATIC },
@@ -104,45 +122,14 @@ bool CPluginManagerDlg::InitializeControls()
     return true;
 }
 
-void CPluginManagerDlg::RepositionInstallButton()
-{
-    CWnd* options = GetDlgItem(IDC_OPTINS_BUTTON);
-    CWnd* install = GetDlgItem(IDC_INSTALL_PLUGIN_BUTTON);
-    if (options == nullptr || install == nullptr)
-        return;
-
-    CRect options_rect;
-    CRect install_rect;
-    options->GetWindowRect(&options_rect);
-    install->GetWindowRect(&install_rect);
-    ScreenToClient(&options_rect);
-    ScreenToClient(&install_rect);
-
-    const int gap = theApp.DPI(8);
-    const int min_left = options_rect.right + gap;
-    if (install_rect.left >= min_left)
-        return;     //没有重叠，保持资源里的位置
-
-    int right = install_rect.right + (min_left - install_rect.left);
-    if (CWnd* close = GetDlgItem(IDCANCEL))
-    {
-        CRect close_rect;
-        close->GetWindowRect(&close_rect);
-        ScreenToClient(&close_rect);
-        if (right + gap > close_rect.left)
-            right = close_rect.left - gap;      //会撞关闭按钮时压缩安装按钮宽度
-    }
-    if (right > min_left)
-        install->MoveWindow(min_left, install_rect.top, right - min_left, install_rect.Height());
-}
-
-
 BEGIN_MESSAGE_MAP(CPluginManagerDlg, CBaseDialog)
     ON_NOTIFY(NM_RCLICK, IDC_LIST1, &CPluginManagerDlg::OnNMRClickList1)
     ON_NOTIFY(NM_CLICK, IDC_LIST1, &CPluginManagerDlg::OnNMClickList1)
     ON_BN_CLICKED(IDC_OPTINS_BUTTON, &CPluginManagerDlg::OnBnClickedOptinsButton)
     ON_BN_CLICKED(IDC_PLUGIN_INFO_BUTTON, &CPluginManagerDlg::OnBnClickedPluginInfoButton)
     ON_BN_CLICKED(IDC_INSTALL_PLUGIN_BUTTON, &CPluginManagerDlg::OnBnClickedInstallPluginButton)
+    ON_BN_CLICKED(IDC_PLUGIN_CHECK_UPDATES, &CPluginManagerDlg::OnBnClickedCheckPluginUpdates)
+    ON_BN_CLICKED(IDC_PLUGIN_MANAGE_UPDATE, &CPluginManagerDlg::OnBnClickedManagePluginUpdate)
     ON_NOTIFY(LVN_ITEMCHANGED, IDC_LIST1, &CPluginManagerDlg::OnLvnItemchangedList1)
     ON_NOTIFY(NM_DBLCLK, IDC_LIST1, &CPluginManagerDlg::OnNMDblclkList1)
     ON_WM_INITMENU()
@@ -151,6 +138,7 @@ BEGIN_MESSAGE_MAP(CPluginManagerDlg, CBaseDialog)
     ON_COMMAND(ID_PLUGIN_DISABLE, &CPluginManagerDlg::OnPluginDisable)
     ON_MESSAGE(WM_LINK_CLICKED, &CPluginManagerDlg::OnLinkClicked)
     ON_WM_SIZE()
+    ON_WM_TIMER()
 END_MESSAGE_MAP()
 
 
@@ -169,11 +157,12 @@ BOOL CPluginManagerDlg::OnInitDialog()
     m_open_plugin_dir_lnk.SetBackgroundColor(GetSysColor(COLOR_WINDOW));
 
     //初始化列表控件
-    m_list_ctrl.SetExtendedStyle(LVS_EX_FULLROWSELECT | LVS_EX_LABELTIP);
+    m_list_ctrl.SetExtendedStyle(LVS_EX_FULLROWSELECT | LVS_EX_LABELTIP | LVS_EX_DOUBLEBUFFER);
     m_list_ctrl.InsertColumn(COL_FILE_NAME, CCommon::LoadText(IDS_FILE_NAME), LVCFMT_LEFT, 1);
     m_list_ctrl.InsertColumn(COL_NAME, CCommon::LoadText(IDS_PLUGIN_NAME), LVCFMT_LEFT, 1);
     m_list_ctrl.InsertColumn(COL_SOURCE, CCommon::LoadText(TXT_STORE_COL_SOURCE), LVCFMT_LEFT, 1);
     m_list_ctrl.InsertColumn(COL_VERSION, CCommon::LoadText(IDS_VERSION), LVCFMT_LEFT, 1);
+    m_list_ctrl.InsertColumn(COL_UPDATE, CCommon::LoadText(TXT_PLUGIN_AVAILABLE_UPDATE), LVCFMT_LEFT, 1);
     m_list_ctrl.InsertColumn(COL_STATUS, CCommon::LoadText(IDS_STATUS), LVCFMT_LEFT, 1);
     ResizeColumns();
 
@@ -206,7 +195,6 @@ BOOL CPluginManagerDlg::OnInitDialog()
     m_list_ctrl.SetImageList(&m_plugin_icon_list, LVSIL_SMALL);
 
     //向列表中插入行
-    const auto store_items = theApp.m_plugin_update.GetStoreItems();     //云端清单快照，用于官方角标
     for (const auto& plugin : theApp.m_plugins.GetPlugins())
     {
         std::wstring file_name = CFilePathHelper(plugin.file_path).GetFileName();
@@ -239,39 +227,7 @@ BOOL CPluginManagerDlg::OnInitDialog()
         int index = m_list_ctrl.GetItemCount();
         m_list_ctrl.InsertItem(index, file_name.c_str(), m_list_ctrl.GetItemCount());
         m_list_ctrl.SetItemText(index, COL_NAME, plugin.Property(ITMPlugin::TMI_NAME).c_str());
-        //来源角标：只有云端清单标记 official 的插件才显示
-        {
-            bool is_official = false;
-            for (const auto& store_item : store_items)
-            {
-                if (_wcsicmp(store_item.file_name.c_str(), file_name.c_str()) == 0)
-                {
-                    is_official = store_item.official;
-                    break;
-                }
-            }
-            if (is_official)
-                m_list_ctrl.SetItemText(index, COL_SOURCE, CCommon::LoadText(TXT_STORE_OFFICIAL));
-        }
-        if (plugin.state == CPluginManager::PluginState::PS_SUCCEED)
-        {
-            //如果插件有更新，在版本号后添加更新信息
-            PluginVersion cur_version(plugin.Property(ITMPlugin::TMI_VERSION));
-            PluginVersion latest_version(theApp.m_plugin_update.GetPluginLatestVersions(file_name));
-            if (cur_version < latest_version)
-            {
-                std::wstring update_info = theApp.m_str_table.LoadTextFormat(IDS_PLUGIN_NEW_VERSION_INFO, { latest_version.GetVersionWString() });
-                std::wstring version_text = plugin.Property(ITMPlugin::TMI_VERSION);
-                version_text += L" (";
-                version_text += update_info;
-                version_text += L')';
-                m_list_ctrl.SetItemText(index, COL_VERSION, version_text.c_str());
-            }
-            else
-            {
-                m_list_ctrl.SetItemText(index, COL_VERSION, plugin.Property(ITMPlugin::TMI_VERSION).c_str());
-            }
-        }
+        m_list_ctrl.SetItemText(index, COL_VERSION, plugin.Property(ITMPlugin::TMI_VERSION).c_str());
         m_list_ctrl.SetItemText(index, COL_STATUS, status);
     }
 
@@ -297,8 +253,99 @@ BOOL CPluginManagerDlg::OnInitDialog()
     SetButtonIcon(IDC_PLUGIN_INFO_BUTTON, theApp.GetMenuIcon(IDI_INFO));
     SetButtonIcon(IDC_OPTINS_BUTTON, theApp.GetMenuIcon(IDI_SETTINGS));
 
+    OnBnClickedCheckPluginUpdates();
+
     return TRUE;  // return TRUE unless you set the focus to a control
                   // 异常: OCX 属性页应返回 FALSE
+}
+
+void CPluginManagerDlg::OnBnClickedCheckPluginUpdates()
+{
+    theApp.m_plugin_update.RefreshAsync();
+    RefreshUpdateColumns();
+}
+
+void CPluginManagerDlg::RefreshUpdateColumns()
+{
+    using Status = CPluginUpdateHelper::Status;
+    const auto catalog = theApp.m_plugin_update.GetCatalog();
+    int updates = 0;
+    int first_update = -1;
+    int row = 0;
+    for (const auto& plugin : theApp.m_plugins.GetPlugins())
+    {
+        const auto file_name = CFilePathHelper(plugin.file_path).GetFileName();
+        const auto* item = FindPluginStoreItem(catalog.items, file_name);
+        const auto pending_version = theApp.m_plugin_update.GetPendingVersion(file_name);
+        CString available;
+        if (!pending_version.GetVersionString().empty())
+            available = CCommon::LoadText(TXT_PLUGIN_PENDING_RESTART);
+        else if (item != nullptr && GetPluginStoreState(*item, true, PluginVersion(plugin.Property(ITMPlugin::TMI_VERSION)),
+            pending_version) == PluginStoreState::UpdateAvailable)
+        {
+            available = item->version.GetVersionWString().c_str();
+            if (first_update < 0)
+                first_update = row;
+            ++updates;
+        }
+        const CString source = item != nullptr && item->official ? CCommon::LoadText(TXT_STORE_OFFICIAL) : CString();
+        m_list_ctrl.SetItemText(row, COL_SOURCE, source);
+        m_list_ctrl.SetItemText(row, COL_UPDATE, available);
+        ++row;
+    }
+
+    CString status;
+    switch (catalog.status)
+    {
+    case Status::Checking:
+        status = CCommon::LoadText(TXT_PLUGIN_CHECKING);
+        SetTimer(CatalogTimer, 100, nullptr);
+        break;
+    case Status::Failed:
+        status = CCommon::LoadText(catalog.has_snapshot ? TXT_PLUGIN_CHECK_FAILED_CACHED : TXT_PLUGIN_CHECK_FAILED);
+        break;
+    case Status::Ready:
+        status = updates > 0 ? CCommon::LoadTextFormat(TXT_PLUGIN_UPDATE_COUNT, { updates })
+            : CCommon::LoadText(theApp.m_plugin_update.HasPendingRestart() ? TXT_PLUGIN_PENDING_RESTART : TXT_PLUGIN_NO_UPDATES);
+        break;
+    default:
+        break;
+    }
+    if (catalog.status != Status::Checking)
+        KillTimer(CatalogTimer);
+    SetDlgItemText(IDC_PLUGIN_UPDATE_STATUS, status);
+    EnableDlgCtrl(IDC_PLUGIN_CHECK_UPDATES, catalog.status != Status::Checking);
+    if (first_update >= 0 && m_list_ctrl.GetNextItem(-1, LVNI_SELECTED) < 0)
+        m_list_ctrl.SetItemState(first_update, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+    EnableControl();
+}
+
+void CPluginManagerDlg::OnTimer(UINT_PTR timer)
+{
+    if (timer == CatalogTimer)
+    {
+        if (theApp.m_plugin_update.GetStatus() != CPluginUpdateHelper::Status::Checking)
+            RefreshUpdateColumns();
+        return;
+    }
+    CBaseDialog::OnTimer(timer);
+}
+
+void CPluginManagerDlg::OpenStore(const std::wstring& selected_file)
+{
+    CPluginStoreDlg store_dlg(this, selected_file);
+    if (store_dlg.DoModal() == IDOK)
+        RequestPluginRestart();
+    else
+        RefreshUpdateColumns();
+}
+
+void CPluginManagerDlg::OnBnClickedManagePluginUpdate()
+{
+    if (!m_selected_update_file.empty())
+        OpenStore(m_selected_update_file);
+    else if (theApp.m_plugin_update.HasPendingRestart())
+        RequestPluginRestart();
 }
 
 
@@ -306,9 +353,9 @@ void CPluginManagerDlg::OnLvnItemchangedList1(NMHDR* pNMHDR, LRESULT* pResult)
 {
     //键盘改选也要同步选中项，否则「详情/选项/禁用」会作用到上一次鼠标选中的行
     const auto* notify = reinterpret_cast<LPNMLISTVIEW>(pNMHDR);
-    if ((notify->uChanged & LVIF_STATE) != 0 && (notify->uNewState & LVIS_SELECTED) != 0)
+    if ((notify->uChanged & LVIF_STATE) && ((notify->uOldState ^ notify->uNewState) & LVIS_SELECTED))
     {
-        m_item_selected = notify->iItem;
+        m_item_selected = m_list_ctrl.GetNextItem(-1, LVNI_SELECTED);
         EnableControl();
     }
     *pResult = 0;
@@ -525,9 +572,7 @@ void CPluginManagerDlg::OnBnClickedInstallPluginButton()
     message += CCommon::LoadText(IDS_PLUGIN_INSTALL_RESTART_PROMPT);
     if (MessageBox(message, nullptr, MB_ICONQUESTION | MB_YESNO) == IDYES)
     {
-        //交给主窗口处理：它负责关闭所有对话框、启动新实例并退出
-        if (theApp.m_pMainWnd != nullptr && ::IsWindow(theApp.m_pMainWnd->GetSafeHwnd()))
-            ::PostMessage(theApp.m_pMainWnd->GetSafeHwnd(), WM_RESTART_FOR_PLUGIN, 0, 0);
+        RequestPluginRestart();
     }
 }
 
@@ -595,12 +640,7 @@ afx_msg LRESULT CPluginManagerDlg::OnLinkClicked(WPARAM wParam, LPARAM lParam)
     //点击了「更多插件下载」：打开内置插件商店
     if (pCtrl == &m_plugin_download_lnk)
     {
-        CPluginStoreDlg store_dlg(this);
-        if (store_dlg.DoModal() == IDOK && store_dlg.m_restart_required)
-        {
-            if (theApp.m_pMainWnd != nullptr && ::IsWindow(theApp.m_pMainWnd->GetSafeHwnd()))
-                ::PostMessage(theApp.m_pMainWnd->GetSafeHwnd(), WM_RESTART_FOR_PLUGIN, 0, 0);
-        }
+        OpenStore();
         return 0;
     }
     //点击了“打开插件目录”

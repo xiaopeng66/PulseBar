@@ -26,6 +26,10 @@ private:
     CLinkStatic m_plugin_dev_guide_lnk;
     CLinkStatic m_open_plugin_dir_lnk;
     CImageList m_plugin_icon_list;
+    std::wstring m_selected_update_file;
+
+    void RefreshUpdateColumns();
+    void OpenStore(const std::wstring& selected_file = {});
 
 protected:
     virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV 支持
@@ -33,7 +37,6 @@ protected:
     bool IsSelectedValid();
     bool IsSelectedPluginEnable();     //选中插件是否可用
     void ResizeColumns();
-    void RepositionInstallButton();
 
     enum Column
     {
@@ -41,6 +44,7 @@ protected:
         COL_NAME,
         COL_SOURCE,     //来源：官方 / 第三方
         COL_VERSION,
+        COL_UPDATE,
         COL_STATUS,
         COL_MAX
     };
@@ -59,12 +63,15 @@ public:
     afx_msg void OnBnClickedOptinsButton();
     afx_msg void OnBnClickedPluginInfoButton();
     afx_msg void OnBnClickedInstallPluginButton();
+    afx_msg void OnBnClickedCheckPluginUpdates();
+    afx_msg void OnBnClickedManagePluginUpdate();
     afx_msg void OnNMDblclkList1(NMHDR* pNMHDR, LRESULT* pResult);
     afx_msg void OnInitMenu(CMenu* pMenu);
     afx_msg void OnPluginDetail();
     afx_msg void OnPluginOptions();
     afx_msg void OnPluginDisable();
     afx_msg void OnSize(UINT nType, int cx, int cy);
+    afx_msg void OnTimer(UINT_PTR timer);
 protected:
     afx_msg LRESULT OnLinkClicked(WPARAM wParam, LPARAM lParam);
     virtual BOOL OnCommand(WPARAM wParam, LPARAM lParam);

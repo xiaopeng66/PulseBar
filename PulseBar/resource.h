@@ -453,6 +453,10 @@
 #define IDC_SETTINGS_RENDERING_BUTTON    1252
 #define IDC_SETTINGS_RENDERING_GROUP     1253
 #define IDC_COLOR_FONT_GROUP             1254
+#define IDC_PLUGIN_CHECK_UPDATES         1255
+#define IDC_PLUGIN_UPDATE_STATUS         1256
+#define IDC_PLUGIN_MANAGE_UPDATE         1257
+#define IDC_STORE_STATUS                 1258
 
 // Next default values for new objects
 //
@@ -460,7 +464,7 @@
 #ifndef APSTUDIO_READONLY_SYMBOLS
 #define _APS_NEXT_RESOURCE_VALUE        351
 #define _APS_NEXT_COMMAND_VALUE         33682
-#define _APS_NEXT_CONTROL_VALUE         1255
+#define _APS_NEXT_CONTROL_VALUE         1259
 #define _APS_NEXT_SYMED_VALUE           101
 #endif
 #endif

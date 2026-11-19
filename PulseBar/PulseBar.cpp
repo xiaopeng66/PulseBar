@@ -924,12 +924,10 @@ void CPulseBarApp::CheckUpdateInThread(bool message)
 UINT CPulseBarApp::CheckUpdateThreadFunc(LPVOID lpParam)
 {
     CCommon::SetThreadLanguage(theApp.m_general_data.language.language_id);     //设置线程语言
+    theApp.m_plugin_update.RefreshAsync();  //插件目录请求独立于宿主版本检查结果
 #ifndef _DEBUG      //DEBUG下不在启动时检查更新
     theApp.CheckUpdate(lpParam);        //检查更新
 #endif
-    //检测插件更新与商店清单：不再以「已装插件」为前提，
-    //否则首次安装、或插件全被禁用时打开商店/看角标都拿不到清单
-    theApp.m_plugin_update.CheckForUpdate();
     return 0;
 }
 

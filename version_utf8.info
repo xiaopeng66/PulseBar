@@ -1,28 +1,22 @@
 ﻿<root>
-	<version>1.1.1</version>
+	<version>1.1.2</version>
 	<GitHub>
-		<link>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.1/PulseBar_V1.1.1_x86.zip</link>
-		<link_x64>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.1/PulseBar_V1.1.1_x64.zip</link_x64>
-		<link_arm64ec>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.1/PulseBar_V1.1.1_arm64ec.zip</link_arm64ec>
-		<link_without_temperature>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.1/PulseBar_V1.1.1_x86.zip</link_without_temperature>
-		<link_without_temperature_x64>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.1/PulseBar_V1.1.1_x64.zip</link_without_temperature_x64>
-		<link_without_temperature_arm64ec>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.1/PulseBar_V1.1.1_arm64ec.zip</link_without_temperature_arm64ec>
+		<link>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.2/PulseBar_V1.1.2_x86.zip</link>
+		<link_x64>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.2/PulseBar_V1.1.2_x64.zip</link_x64>
+		<link_arm64ec>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.2/PulseBar_V1.1.2_arm64ec.zip</link_arm64ec>
+		<link_without_temperature>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.2/PulseBar_V1.1.2_x86.zip</link_without_temperature>
+		<link_without_temperature_x64>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.2/PulseBar_V1.1.2_x64.zip</link_without_temperature_x64>
+		<link_without_temperature_arm64ec>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.2/PulseBar_V1.1.2_arm64ec.zip</link_without_temperature_arm64ec>
 	</GitHub>
 	<update_contents>
-		<contents_zh_cn>插件商店修复：清单双源回退（Gitee 仓库不存在时自动改用 GitHub），中文说明不再乱码，打开商店不再卡顿。
-修正“检查更新”始终失败的问题。
-已安装插件可直接覆盖更新，重启后生效，不再要求先退出程序。
-修正重启后任务栏面板不显示、菜单勾选状态丢失的问题；面板意外关闭会自动恢复。
-拖盘图标在开机自启动时创建失败会自动补上。</contents_zh_cn>
-		<contents_en>Plugin store: falls back between two sources (GitHub when the Gitee repository is missing), Chinese descriptions are decoded correctly, and the dialog no longer blocks while loading.
-Fixed the update check that always failed.
-Installed plugins can now be updated in place and take effect after a restart.
-Fixed the taskbar panel not showing after a restart and losing its checked state; it is now restored automatically if it closes unexpectedly.
-The tray icon is added automatically if the first attempt fails at logon.</contents_en>
-		<contents_zh_tw>外掛商店修復：清單雙來源回退（Gitee 儲存庫不存在時自動改用 GitHub），中文說明不再亂碼，開啟商店不再卡頓。
-修正「檢查更新」始終失敗的問題。
-已安裝外掛可直接覆蓋更新，重新啟動後生效，不再要求先結束程式。
-修正重新啟動後工作列面板不顯示、選單勾選狀態遺失的問題；面板意外關閉會自動恢復。
-通知區圖示在開機自動啟動時建立失敗會自動補上。</contents_zh_tw>
+		<contents_zh_cn>打开插件管理时自动在后台检查更新，即使关闭了启动时检查也能发现插件新版本。
+插件商店显示本地与可用版本。下载完成后可立即重启，也可稍后重启生效。
+目录刷新失败时保留上次成功加载的清单；替换失败时恢复旧插件。</contents_zh_cn>
+		<contents_en>Plugin Management checks for plugin updates in the background when opened, even if startup checks are off.
+The store shows installed and available versions. Restart now or later to load an updated plugin.
+A failed catalog refresh keeps the last loaded catalog. A failed replacement restores the old plugin.</contents_en>
+		<contents_zh_tw>開啟外掛管理時會在背景自動檢查更新，即使關閉啟動時檢查，也能找到外掛新版本。
+外掛商店顯示本機與可用版本。下載後可立即重新啟動，也可稍後重新啟動生效。
+目錄重新整理失敗時保留上次成功載入的清單；取代失敗時還原舊外掛。</contents_zh_tw>
 	</update_contents>
 </root>
