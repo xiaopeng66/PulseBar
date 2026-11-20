@@ -1,6 +1,11 @@
 **[简体中文](./update_log.md) | [繁體中文](./update_log_zh-tw.md) | English**
 
 # PulseBar Update log
+## V1.1.3 (2026/11/20)
+
+- Fix intermittent taskbar panel flicker by correctly checking the embedding result, avoiding unnecessary panel recreation every 10 seconds after successful embedding.
+- Keep recovery for actual embedding failures.
+
 ## V1.86(2026/03/29)
 
 **New Features**

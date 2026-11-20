@@ -1,22 +1,19 @@
 ﻿<root>
-	<version>1.1.2</version>
+	<version>1.1.3</version>
 	<GitHub>
-		<link>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.2/PulseBar_V1.1.2_x86.zip</link>
-		<link_x64>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.2/PulseBar_V1.1.2_x64.zip</link_x64>
-		<link_arm64ec>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.2/PulseBar_V1.1.2_arm64ec.zip</link_arm64ec>
-		<link_without_temperature>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.2/PulseBar_V1.1.2_x86.zip</link_without_temperature>
-		<link_without_temperature_x64>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.2/PulseBar_V1.1.2_x64.zip</link_without_temperature_x64>
-		<link_without_temperature_arm64ec>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.2/PulseBar_V1.1.2_arm64ec.zip</link_without_temperature_arm64ec>
+		<link>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.3/PulseBar_V1.1.3_x86.zip</link>
+		<link_x64>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.3/PulseBar_V1.1.3_x64.zip</link_x64>
+		<link_arm64ec>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.3/PulseBar_V1.1.3_arm64ec.zip</link_arm64ec>
+		<link_without_temperature>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.3/PulseBar_V1.1.3_x86.zip</link_without_temperature>
+		<link_without_temperature_x64>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.3/PulseBar_V1.1.3_x64.zip</link_without_temperature_x64>
+		<link_without_temperature_arm64ec>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.3/PulseBar_V1.1.3_arm64ec.zip</link_without_temperature_arm64ec>
 	</GitHub>
 	<update_contents>
-		<contents_zh_cn>打开插件管理时自动在后台检查更新，即使关闭了启动时检查也能发现插件新版本。
-插件商店显示本地与可用版本。下载完成后可立即重启，也可稍后重启生效。
-目录刷新失败时保留上次成功加载的清单；替换失败时恢复旧插件。</contents_zh_cn>
-		<contents_en>Plugin Management checks for plugin updates in the background when opened, even if startup checks are off.
-The store shows installed and available versions. Restart now or later to load an updated plugin.
-A failed catalog refresh keeps the last loaded catalog. A failed replacement restores the old plugin.</contents_en>
-		<contents_zh_tw>開啟外掛管理時會在背景自動檢查更新，即使關閉啟動時檢查，也能找到外掛新版本。
-外掛商店顯示本機與可用版本。下載後可立即重新啟動，也可稍後重新啟動生效。
-目錄重新整理失敗時保留上次成功載入的清單；取代失敗時還原舊外掛。</contents_zh_tw>
+		<contents_zh_cn>修复任务栏面板间歇性闪烁：正确识别窗口嵌入结果，避免成功嵌入后仍每隔 10 秒关闭并重建面板。
+保留真正嵌入失败时的恢复处理。</contents_zh_cn>
+		<contents_en>Fix intermittent taskbar panel flicker by correctly checking the window embedding result, avoiding unnecessary panel recreation every 10 seconds after successful embedding.
+Keep recovery for actual embedding failures.</contents_en>
+		<contents_zh_tw>修復工作列面板間歇性閃爍：正確判斷視窗嵌入結果，避免成功嵌入後仍每隔 10 秒關閉並重建面板。
+保留真正嵌入失敗時的復原處理。</contents_zh_tw>
 	</update_contents>
 </root>

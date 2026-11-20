@@ -78,6 +78,15 @@ class WindowLifecycleGuards(unittest.TestCase):
         # 日志必须限流，自愈重试会反复走到这些分支
         self.assertIn('logged >= 5', source)
 
+    def test_null_previous_parent_is_not_mistaken_for_setparent_failure(self):
+        init = native.method(native.source('TaskBarDlg.cpp'), 'BOOL CTaskBarDlg::OnInitDialog()')
+        self.assertIn('::SetLastError(ERROR_SUCCESS)', init)
+        set_parent = init.index('::SetParent(this->m_hWnd, taskbar_parent)')
+        self.assertLess(init.index('::SetLastError(ERROR_SUCCESS)'), set_parent)
+        self.assertLess(set_parent, init.index('::GetLastError()', set_parent))
+        self.assertIn('prev_parent == nullptr && m_error_code != ERROR_SUCCESS', init)
+        self.assertIn('::GetAncestor(this->m_hWnd, GA_PARENT) != taskbar_parent', init)
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

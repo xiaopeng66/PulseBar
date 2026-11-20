@@ -1363,10 +1363,11 @@ BOOL CTaskBarDlg::OnInitDialog()
     }
     //SetParent 对非 WS_CHILD 的 popup 对话框设置的是 GA_PARENT 链；
     //GetParent 只查 owner，用它判定会永远误报失败并触发重建循环。
-    //成功判定以 SetParent 返回值与 GetAncestor(GA_PARENT) 为准。
+    //SetParent 返回 nullptr 可以表示原先没有 parent；先清理错误码再区分 API 失败。
+    ::SetLastError(ERROR_SUCCESS);
     const HWND prev_parent = ::SetParent(this->m_hWnd, taskbar_parent);
     m_error_code = ::GetLastError();
-    m_connot_insert_to_task_bar = prev_parent == nullptr
+    m_connot_insert_to_task_bar = (prev_parent == nullptr && m_error_code != ERROR_SUCCESS)
         || ::GetAncestor(this->m_hWnd, GA_PARENT) != taskbar_parent;
     if (m_connot_insert_to_task_bar)
     {
