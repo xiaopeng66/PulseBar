@@ -12,7 +12,7 @@ class TestNativeTestRoot(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             root = configured_root()
         repository = Path(__file__).resolve().parents[2]
-        self.assertEqual(root, Path(tempfile.gettempdir()) / "pulsebar-regression")
+        self.assertEqual(root, (Path(tempfile.gettempdir()) / "pulsebar-regression").resolve())
         self.assertFalse(root == repository or repository in root.parents)
         self.assertFalse(root in repository.parents)
 
