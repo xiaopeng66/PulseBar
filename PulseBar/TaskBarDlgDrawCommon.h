@@ -826,6 +826,8 @@ public:
     CD2D1ResCacheBase& operator=(const CD2D1ResCacheBase&) = delete;
 
     void RebindRenderTarget(Microsoft::WRL::ComPtr<ID2D1RenderTarget> p_render_target) {
+        if (m_p_render_target.Get() == p_render_target.Get())
+            return;
         m_p_render_target = p_render_target;
         RecreateAllResources();
     }

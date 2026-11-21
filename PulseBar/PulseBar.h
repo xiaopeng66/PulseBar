@@ -28,6 +28,7 @@
 #include "PluginUpdateHelper.h"
 #include "PluginInterface.h"
 #include "MonitorSettings.h"
+#include "UpdateCheckGate.h"
 
 // CPulseBarApp:
 // 有关此类的实现，请参阅 PulseBar.cpp
@@ -224,7 +225,7 @@ public:
     void DestroyNotifyIcons();
     HICON GetNotifyIcon(int selected);
 
-    bool IsCheckingForUpdate() const { return m_checking_update; }      //是否正在检查更新
+    bool IsCheckingForUpdate() const { return m_checking_update.load(); }      //是否正在检查更新
 
     //UI-only publisher; read handles are immutable and may outlive later UI commits.
     void PublishMonitorSettings();
@@ -262,7 +263,7 @@ private:
     bool m_exit_when_start_by_restart_manager{ true };      //如果程序被Windows重启管理器重新启动，则退出程序
     int m_dpi{ 96 };
 
-    bool m_checking_update{ false };        //是否正在检查更新
+    std::atomic_bool m_checking_update{ false };        //是否正在检查更新
 
     std::map<UINT, HICON> m_menu_icons;      //菜单图标资源。key是图标资源的ID，vlaue是图标的句柄
 

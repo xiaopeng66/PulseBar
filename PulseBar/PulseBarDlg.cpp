@@ -935,10 +935,6 @@ void CPulseBarDlg::AddNotifyIcon()
 
 {
 
-    if (theApp.m_cfg_data.m_show_task_bar_wnd)
-
-        CloseTaskBarWnd();
-
     //添加前按当前模式取图，隐藏期间修改样式也不会复用旧句柄。
     KillTimer(DELETE_NOTIFY_ICON_TIMER);
     m_ntIcon.hIcon = GetCurrentNotifyIcon();
@@ -946,10 +942,6 @@ void CPulseBarDlg::AddNotifyIcon()
     m_notify_icon_add_pending = !::Shell_NotifyIcon(NIM_ADD, &m_ntIcon);
     if (m_notify_icon_add_pending)
         m_last_notify_tip.Empty();   //添加失败不能把尚未发布的新图标当作已更新。
-
-    if (theApp.m_cfg_data.m_show_task_bar_wnd)
-
-        OpenTaskBarWnd();
 
 }
 
@@ -959,18 +951,10 @@ void CPulseBarDlg::DeleteNotifyIcon()
 
 {
 
-    if (theApp.m_cfg_data.m_show_task_bar_wnd)
-
-        CloseTaskBarWnd();
-
     //删除通知栏图标
 
     ::Shell_NotifyIcon(NIM_DELETE, &m_ntIcon);
     m_notify_icon_add_pending = false;      //用户主动移除图标：不再补加
-
-    if (theApp.m_cfg_data.m_show_task_bar_wnd)
-
-        OpenTaskBarWnd();
 
 }
 
@@ -2664,7 +2648,7 @@ void CPulseBarDlg::OnTimer(UINT_PTR nIDEvent)
 
         {
 
-            if (m_tBarDlg->GetCannotInsertToTaskBar() && m_insert_to_taskbar_cnt < MAX_INSERT_TO_TASKBAR_CNT)
+            if (m_tBarDlg != nullptr && IsTaskbarWndValid() && m_tBarDlg->GetCannotInsertToTaskBar() && m_insert_to_taskbar_cnt < MAX_INSERT_TO_TASKBAR_CNT)
 
             {
 
@@ -2674,7 +2658,7 @@ void CPulseBarDlg::OnTimer(UINT_PTR nIDEvent)
 
                 m_insert_to_taskbar_cnt++;
 
-                if (m_tBarDlg->GetCannotInsertToTaskBar() && m_insert_to_taskbar_cnt >= WARN_INSERT_TO_TASKBAR_CNT)
+                if (m_tBarDlg != nullptr && IsTaskbarWndValid() && m_tBarDlg->GetCannotInsertToTaskBar() && m_insert_to_taskbar_cnt >= WARN_INSERT_TO_TASKBAR_CNT)
 
                 {
 
@@ -2704,7 +2688,7 @@ void CPulseBarDlg::OnTimer(UINT_PTR nIDEvent)
 
             }
 
-            if (!m_tBarDlg->GetCannotInsertToTaskBar())
+            if (m_tBarDlg != nullptr && IsTaskbarWndValid() && !m_tBarDlg->GetCannotInsertToTaskBar())
 
             {
 

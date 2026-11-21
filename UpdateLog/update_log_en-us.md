@@ -1,6 +1,12 @@
 **[简体中文](./update_log.md) | [繁體中文](./update_log_zh-tw.md) | English**
 
 # PulseBar Update log
+## V1.1.4 (2026/11/21)
+
+- Fix plugin update detection and installation edge cases, and synchronize update-check state.
+- Resolve multiple issues in traffic history, hardware sampling, taskbar recovery, calendar tooltips, and rendering resource management.
+- Update the Magpie Taskbar 1.3.1 plugin catalog entry.
+
 ## V1.1.3 (2026/11/20)
 
 - Fix intermittent taskbar panel flicker by correctly checking the embedding result, avoiding unnecessary panel recreation every 10 seconds after successful embedding.

@@ -1,7 +1,6 @@
 """Bounded taskbar theme geometry regressions.
 
-These checks stay source-local and do not launch the application or GUI. The pure helper
-also has a native probe under E:/AI/Zcode/tmp/pulsebar-ui-audit/theme-geometry-独占.
+These checks stay source-local and do not launch the application or GUI.
 """
 from pathlib import Path
 import unittest

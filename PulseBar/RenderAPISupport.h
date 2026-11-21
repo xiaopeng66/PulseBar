@@ -106,23 +106,9 @@ public:
         auto p_device = static_cast<DevicePointer>(this);
         m_sp_storage = std::make_shared<Storage>(p_device);
     }
-    CTrackableDevice& operator=(const CTrackableDevice&)
-    {
-        auto p_device = static_cast<DevicePointer>(this);
-        this->m_sp_storage = std::make_shared<Storage>(p_device);
-        return *this;
-    }
-    CTrackableDevice(CTrackableDevice&& other) noexcept
-        : m_sp_storage{std::exchange(other.m_sp_storage, nullptr)}
-    {
-        m_sp_storage.GetDevicePointer() = static_cast<DevicePointer>(this);
-    }
-    CTrackableDevice& operator=(CTrackableDevice&& other) noexcept
-    {
-        m_sp_storage = std::exchange(other.m_sp_storage, nullptr);
-        m_sp_storage.GetDevicePointer() = static_cast<DevicePointer>(this);
-        return *this;
-    }
+    CTrackableDevice& operator=(const CTrackableDevice&) = delete;
+    CTrackableDevice(CTrackableDevice&&) = delete;
+    CTrackableDevice& operator=(CTrackableDevice&&) = delete;
 
     auto GetSharedDevicePointerStorage() const
         -> std::shared_ptr<Storage>
@@ -175,7 +161,7 @@ private:
 
 public:
     CResourceTracker()
-        : m_sp_storage{std::make_shared<CResourceTracker>()}
+        : m_sp_storage{std::make_shared<Storage>()}
     {
     }
     CResourceTracker(std::shared_ptr<Storage> m_sp_storage)
@@ -265,12 +251,7 @@ public:
     {
         BeginTrack(*this);
     }
-    CDeviceResourceBase& operator=(CDeviceResourceBase& other)
-    {
-        this->m_wp_device_storage = other.m_wp_device;
-        BeginTrack(*this);
-        return *this;
-    }
+    CDeviceResourceBase& operator=(const CDeviceResourceBase&) = delete;
     CDeviceResourceBase(CDeviceResourceBase&& other)
         : m_wp_device_storage{}
     {
@@ -278,13 +259,7 @@ public:
         m_wp_device_storage = std::exchange(other.m_wp_device_storage, nullptr);
         BeginTrack(*this);
     }
-    CDeviceResourceBase& operator=(CDeviceResourceBase&& other)
-    {
-        EndTrack(other);
-        this->m_wp_device_storage = std::exchange(other.m_wp_device_storage, nullptr);
-        BeginTrack(*this);
-        return *this;
-    }
+    CDeviceResourceBase& operator=(CDeviceResourceBase&&) = delete;
 };
 
 template <class Device>

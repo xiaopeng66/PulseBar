@@ -68,20 +68,22 @@ auto CHResultException::GetHResult() const noexcept
     return m_hr;
 }
 
-void LogHResultException(CHResultException& ex)
+void LogHResultException(CHResultException& ex) noexcept
 {
-    auto str_hr = "HResult:" + std::to_string(ex.GetHResult());
-    CCommon::WriteLog(str_hr.c_str(), theApp.m_log_path.c_str());
-    auto* log = ex.what();
-    CCommon::WriteLog(log, theApp.m_log_path.c_str());
-    auto* p_error = ex.GetError().Get();
-    if (p_error == NULL)
-    {
-        return;
-    }
     BSTR p_description{NULL};
-    ThrowIfFailed(p_error->GetDescription(&p_description),
-                  TRAFFICMONITOR_ERROR_STR("Get description from IErrorInfo failed."));
-    CCommon::WriteLog(p_description, theApp.m_log_path.c_str());
-    ::SysFreeString(p_description);
+    try
+    {
+        auto str_hr = "HResult:" + std::to_string(ex.GetHResult());
+        CCommon::WriteLog(str_hr.c_str(), theApp.m_log_path.c_str());
+        CCommon::WriteLog(ex.what(), theApp.m_log_path.c_str());
+        auto* p_error = ex.GetError().Get();
+        if (p_error != nullptr && SUCCEEDED(p_error->GetDescription(&p_description)) && p_description != nullptr)
+            CCommon::WriteLog(p_description, theApp.m_log_path.c_str());
+    }
+    catch (...)
+    {
+        // Logging is best-effort and must not escape a rendering recovery path.
+    }
+    if (p_description != nullptr)
+        ::SysFreeString(p_description);
 }

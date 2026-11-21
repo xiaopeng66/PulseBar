@@ -12,9 +12,10 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from test_paths import run_root
 
 ROOT = Path(__file__).resolve().parents[2]
-RUN_ROOT = Path("E:/AI/Zcode/tmp/pulsebar-fix-20261105")
+RUN_ROOT = run_root("public-build")
 
 
 def snapshot(root):

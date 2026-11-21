@@ -66,7 +66,8 @@ void CSpinEdit::PreSubclassWindow()
     // 要求文本左对齐，右侧会被spin控件覆盖
     // WS_CLIPCHILDREN在绘制中排除子窗口区域，避免重叠的控件绘制闪烁
     ModifyStyle(ES_CENTER | ES_RIGHT, ES_LEFT | WS_CLIPCHILDREN);
-    m_spin.Create(WS_CHILD | WS_VISIBLE | UDS_ARROWKEYS | UDS_HOTTRACK | UDS_SETBUDDYINT, CRect(), this, SPIN_ID);
+    m_spin.Create(WS_CHILD | WS_VISIBLE | UDS_ARROWKEYS | UDS_HOTTRACK | UDS_SETBUDDYINT | UDS_NOTHOUSANDS,
+        CRect(), this, SPIN_ID);
     // 获取spin控件宽度
     CRect rect;
     m_spin.GetWindowRect(&rect);

@@ -4,6 +4,33 @@
 #include "AtomicFile.h"
 #include <sstream>
 
+namespace
+{
+void MergeTrafficData(HistoryTraffic& target, const HistoryTraffic& source, bool use_max)
+{
+    if (target.mixed || source.mixed)
+    {
+        const auto target_total = target.kBytes();
+        const auto source_total = source.kBytes();
+        target.up_kBytes = 0;
+        target.down_kBytes = use_max
+            ? (target_total > source_total ? target_total : source_total)
+            : target_total + source_total;
+        target.mixed = true;
+    }
+    else if (use_max)
+    {
+        if (source.up_kBytes > target.up_kBytes) target.up_kBytes = source.up_kBytes;
+        if (source.down_kBytes > target.down_kBytes) target.down_kBytes = source.down_kBytes;
+    }
+    else
+    {
+        target.up_kBytes += source.up_kBytes;
+        target.down_kBytes += source.down_kBytes;
+    }
+}
+}
+
 CHistoryTrafficFile::CHistoryTrafficFile(const wstring& file_path)
 	: m_file_path(file_path)
 {
@@ -33,7 +60,7 @@ void CHistoryTrafficFile::WriteTrafficRecord(std::ostream& file, const HistoryTr
 	if (traffic.mixed)
 	{
 		sprintf_s(buff, "%.4d/%.2d/%.2d %llu", traffic.year, traffic.month, 
-			traffic.day, traffic.down_kBytes);
+			traffic.day, traffic.kBytes());
 	}
 	else
 	{
@@ -236,25 +263,7 @@ void CHistoryTrafficFile::Merge(const CHistoryTrafficFile& history_traffic, bool
 	// 注意：如果 ignore_same_data=true，说明是从备份恢复，应该取较大的值而不是累加，避免重复累加
 	if (HistoryTraffic::DateEqual(m_today_traffic, history_traffic.m_today_traffic))
 	{
-		if (ignore_same_data)
-		{
-			// 从备份恢复时，取较大的值（避免重复累加）
-			// 备份文件通常是程序退出时的完整数据，当前文件可能是程序启动后的不完整数据
-			if (history_traffic.m_today_traffic.up_kBytes > m_today_traffic.up_kBytes)
-			{
-				m_today_traffic.up_kBytes = history_traffic.m_today_traffic.up_kBytes;
-			}
-			if (history_traffic.m_today_traffic.down_kBytes > m_today_traffic.down_kBytes)
-			{
-				m_today_traffic.down_kBytes = history_traffic.m_today_traffic.down_kBytes;
-			}
-		}
-		else
-		{
-			// 正常合并时，累加数据
-			m_today_traffic.up_kBytes += history_traffic.m_today_traffic.up_kBytes;
-			m_today_traffic.down_kBytes += history_traffic.m_today_traffic.down_kBytes;
-		}
+		MergeTrafficData(m_today_traffic, history_traffic.m_today_traffic, ignore_same_data);
 	}
 
 	// 合并历史记录链表
@@ -334,8 +343,7 @@ void CHistoryTrafficFile::MormalizeData()
 			++next_it;
 			if (next_it != m_history_traffics.end() && HistoryTraffic::DateEqual(*it, *next_it))
 			{
-				it->up_kBytes += next_it->up_kBytes;
-				it->down_kBytes += next_it->down_kBytes;
+				MergeTrafficData(*it, *next_it, false);
 				m_history_traffics.erase(next_it);
 			}
 			else
@@ -384,8 +392,7 @@ void CHistoryTrafficFile::MormalizeData()
 		if (HistoryTraffic::DateEqual(m_today_traffic, today_traffic))
 		{
 			// 如果 m_today_traffic 也是今天的，合并数据（避免数据丢失）
-			m_today_traffic.up_kBytes += it->up_kBytes;
-			m_today_traffic.down_kBytes += it->down_kBytes;
+			MergeTrafficData(m_today_traffic, *it, false);
 		}
 		else
 		{
@@ -415,7 +422,7 @@ void CHistoryTrafficFile::MormalizeData()
 	// 更新今天的流量统计
 	m_today_up_traffic = static_cast<__int64>(m_today_traffic.up_kBytes) * 1024;
 	m_today_down_traffic = static_cast<__int64>(m_today_traffic.down_kBytes) * 1024;
-	m_today_traffic.mixed = false;
+	// Preserve the old-format unknown direction marker.
 
 	// 更新总记录数
 	m_size = 1 + m_history_traffics.size();

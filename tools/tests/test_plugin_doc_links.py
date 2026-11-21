@@ -5,6 +5,7 @@ Static/local only; GitHub availability is verified separately at publication.
 from pathlib import Path
 import configparser
 import importlib.util
+import re
 import unittest
 
 REPO=Path(__file__).resolve().parents[2]
@@ -14,6 +15,19 @@ native=importlib.util.module_from_spec(spec);spec.loader.exec_module(native)
 
 
 class PluginLinks(unittest.TestCase):
+    def test_download_page_matches_plugin_manifest(self):
+        page = (SOURCE.parent / 'docs/plugins/downloads.md').read_text(encoding='utf-8')
+        manifest = (SOURCE.parent / 'docs/plugins/plugins_version.xml').read_text(encoding='utf-8')
+        entry = re.search(r'<plugin\b[^>]*file_name="MagpieTaskbar\.dll"[^>]*/>', manifest, re.S)
+        self.assertIsNotNone(entry)
+        version = re.search(r'\bversion="([^"]+)"', entry.group(0)).group(1)
+        download = re.search(r'\bdownload="([^"]+)"', entry.group(0)).group(1)
+        sha256 = re.search(r'\bsha256="([0-9a-f]+)"', entry.group(0)).group(1)
+        self.assertIn(f'| Magpie Taskbar | {version} |', page)
+        self.assertIn(f'[{Path(download).name}]({download})', page)
+        self.assertIn(f'`{sha256}`', page)
+        self.assertIn(f'plugins-v{version}', page)
+
     def test_plugin_manager_links_point_to_documents_that_exist(self):
         init=native.method(native.source('PluginManagerDlg.cpp'),'BOOL CPluginManagerDlg::OnInitDialog()')
         #「更多插件下载」改为直接打开内置插件商店；开发指南仍指向仓库文档

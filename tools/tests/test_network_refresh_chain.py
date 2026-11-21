@@ -11,10 +11,8 @@ from pathlib import Path
 import importlib.util
 
 HERE = Path(__file__).resolve().parent
-TESTS = HERE if (HERE / "native_test_support.py").is_file() else Path("E:/AI/Zcode/projects/traffic-monitor/src/tools/tests")
-spec = importlib.util.spec_from_file_location("network_base", TESTS / "test_network_regressions.py")
-network = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(network)
+TESTS = HERE
+import test_network_regressions as network
 native = network.native
 if "review-" in HERE.name:
     native.RUN_ROOT = HERE

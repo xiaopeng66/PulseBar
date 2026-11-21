@@ -94,7 +94,7 @@ int Date::week() const
 
     {
 
-        days += (week_day - 2);
+        days += (week_day == 0 ? 5 : week_day - 2);
 
     }
 

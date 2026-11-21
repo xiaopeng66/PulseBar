@@ -1047,7 +1047,7 @@ bool CD2D1DeviceContextWindowSupport::CD3DHelper::HandleDeviceRecreationIfNecess
     {
         return std::exchange(m_need_recreate, false);
     }
-    return true;
+    return false;
 }
 
 void CD2D1DeviceContextWindowSupport::CD3DHelper::OnDeviceRecreate(DeviceType p_new_device) noexcept

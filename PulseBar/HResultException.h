@@ -52,4 +52,4 @@ void ThrowIfFailed(HRESULT hr, const char* p_message, Args... args)
     }
 }
 
-void LogHResultException(CHResultException& ex);
+void LogHResultException(CHResultException& ex) noexcept;

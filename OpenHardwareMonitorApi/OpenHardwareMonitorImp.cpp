@@ -3,6 +3,7 @@
 #include "stdafx.h"
 
 #include "OpenHardwareMonitorImp.h"
+#include <cmath>
 #include <vector>
 
 namespace OpenHardwareMonitorApi
@@ -127,20 +128,30 @@ namespace OpenHardwareMonitorApi
     }
 
     bool COpenHardwareMonitor::GetCPUFreq(IHardware^ hardware, float& freq) {
+        m_all_cpu_clock.clear();
         for (int i = 0; i < hardware->Sensors->Length; i++)
         {
             if (hardware->Sensors[i]->SensorType == SensorType::Clock)
             {
                 String^ name = hardware->Sensors[i]->Name;
                 if (name != L"Bus Speed")
-                    m_all_cpu_clock[ClrStringToStdWstring(name)] = Convert::ToDouble(hardware->Sensors[i]->Value);
+                {
+                    const double value = Convert::ToDouble(hardware->Sensors[i]->Value);
+                    if (std::isfinite(value))
+                        m_all_cpu_clock[ClrStringToStdWstring(name)] = value;
+                }
             }
+        }
+        if (m_all_cpu_clock.empty())
+        {
+            freq = -1;
+            return false;
         }
         float sum{};
         for (auto i : m_all_cpu_clock)
             sum += i.second;
         freq = sum / m_all_cpu_clock.size() / 1000.0;
-        return true;
+        return std::isfinite(freq);
     }
 
     bool COpenHardwareMonitor::GetCpuUsage(IHardware^ hardware, float& cpu_usage)
@@ -306,28 +317,20 @@ namespace OpenHardwareMonitorApi
 
     void COpenHardwareMonitor::InsertValueToMap(std::map<std::wstring, float>& value_map, const std::wstring& key, float value)
     {
-        auto iter = value_map.find(key);
-        if (iter == value_map.end())
+        if (value_map.find(key) == value_map.end())
         {
             value_map[key] = value;
+            return;
         }
-        else
+
+        for (size_t index = 1;; ++index)
         {
-            std::wstring key_exist = iter->first;
-            size_t index = key_exist.rfind(L'#');   //查找字符串是否含有#号
-            if (index != std::wstring::npos)
+            const std::wstring unique_key = key + L" #" + std::to_wstring(index);
+            if (value_map.find(unique_key) == value_map.end())
             {
-                //取到#号后面的数字，将其加1
-                int num = _wtoi(key_exist.substr(index + 1).c_str());
-                num++;
-                key_exist = key_exist.substr(0, index + 1);
-                key_exist += std::to_wstring(num);
+                value_map.emplace(unique_key, value);
+                return;
             }
-            else //没有#号则在末尾添加" #1"
-            {
-                key_exist += L" #1";
-            }
-            value_map[key_exist] = value;
         }
     }
 

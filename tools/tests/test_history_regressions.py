@@ -58,10 +58,15 @@ bool Has(const CHistoryTrafficFile& file, int day, unsigned long long up) {
     for (const auto& row:file.GetTraffics()) if(row.day==day && row.up_kBytes==up) return true;
     return false;
 }
+bool HasMixedTotal(const CHistoryTrafficFile& file, int day, unsigned long long total) {
+    for (const auto& row:file.GetTraffics())
+        if(row.day==day) return row.mixed && row.up_kBytes + row.down_kBytes == total;
+    return false;
+}
 int wmain(int argc,wchar_t** argv) {
     if(argc!=3) return 2;
     const wstring mode=argv[1], root=argv[2];
-    if(root.find(L"E:\\AI\\Zcode\\tmp\\pulsebar-fix-20261105\\")!=0) return 3;
+    if(root.find(PULSEBAR_TEST_ROOT)!=0) return 3;
     const wstring path=root+L"\\"+mode+L".dat";
     bool ok=false;
     if(mode==L"rollover") {
@@ -82,6 +87,16 @@ int wmain(int argc,wchar_t** argv) {
         CHistoryTrafficFile file(path); file.Load(); file.SaveTodayOnly(); file.SaveTodayOnly();
         CHistoryTrafficFile restarted(path); restarted.Load();
         ok=Has(restarted,4,100)&&Has(restarted,3,300)&&restarted.GetTraffics().size()==2;
+    } else if(mode==L"mixed-old-first" || mode==L"mixed-new-first") {
+        const string old_first = "lines: \"3\"\n2026/11/04 10/20\n2026/11/03 600\n2026/11/03 100/300\n";
+        const string new_first = "lines: \"3\"\n2026/11/04 10/20\n2026/11/03 100/300\n2026/11/03 600\n";
+        Seed(path, mode==L"mixed-old-first" ? old_first : new_first);
+        CHistoryTrafficFile file(path); ok=file.Load()&&HasMixedTotal(file,3,1000)&&file.Save();
+        CHistoryTrafficFile restarted(path); ok=ok&&restarted.Load()&&HasMixedTotal(restarted,3,1000);
+    } else if(mode==L"mixed-today") {
+        Seed(path,"lines: \"1\"\n2026/11/04 600\n");
+        CHistoryTrafficFile file(path); ok=file.Load()&&HasMixedTotal(file,4,600)&&file.Save();
+        CHistoryTrafficFile restarted(path); ok=ok&&restarted.Load()&&HasMixedTotal(restarted,4,600);
     }
     printf("%s history %ls\n",ok?"PASS":"FAIL",mode.c_str());
     return ok?0:1;
@@ -92,7 +107,8 @@ int wmain(int argc,wchar_t** argv) {
 
 def main():
     run, env = native.build(make_code(), "history")
-    results = [native.execute(run, env, mode) for mode in ("rollover", "equal-backup", "same-day")]
+    results = [native.execute(run, env, mode) for mode in
+               ("rollover", "equal-backup", "same-day", "mixed-old-first", "mixed-new-first", "mixed-today")]
     print(f"ARTIFACTS {run}")
     return int(not all(results))
 

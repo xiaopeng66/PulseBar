@@ -7,6 +7,7 @@
 #include "PulseBarDlg.h"
 #include "crashtool.h"
 #include "UpdateHelper.h"
+#include "NumericVersion.h"
 #include "Test.h"
 #include "WIC.h"
 #include "auto_start_helper.h"
@@ -586,15 +587,27 @@ namespace
         return text;
     }
 
-    void CopyDirectoryContents(const std::wstring& source, const std::wstring& target, int depth = 0)
+    bool CopyDirectoryContents(const std::wstring& source, const std::wstring& target, int depth = 0)
     {
         if (depth > 8)      //异常目录结构兜底，避免无限递归
-            return;
+            return false;
+        const DWORD target_attributes = ::GetFileAttributesW(target.c_str());
+        if (target_attributes == INVALID_FILE_ATTRIBUTES)
+        {
+            if (!::CreateDirectoryW(target.c_str(), nullptr))
+                return false;
+        }
+        else if ((target_attributes & FILE_ATTRIBUTE_DIRECTORY) == 0
+            || (target_attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+        {
+            return false;
+        }
         const std::wstring pattern = WithTrailingSlash(source) + L"*";
         WIN32_FIND_DATAW find_data{};
         HANDLE find_handle = ::FindFirstFileW(pattern.c_str(), &find_data);
         if (find_handle == INVALID_HANDLE_VALUE)
-            return;
+            return ::GetLastError() == ERROR_FILE_NOT_FOUND;
+        bool copied = true;
         do
         {
             if (wcscmp(find_data.cFileName, L".") == 0 || wcscmp(find_data.cFileName, L"..") == 0)
@@ -606,15 +619,18 @@ namespace
                 continue;
             if (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
             {
-                ::CreateDirectoryW(target_item.c_str(), nullptr);
-                CopyDirectoryContents(source_item, target_item, depth + 1);
+                if (!CopyDirectoryContents(source_item, target_item, depth + 1))
+                    copied = false;
             }
-            else
+            else if (!::CopyFileW(source_item.c_str(), target_item.c_str(), FALSE))
             {
-                ::CopyFileW(source_item.c_str(), target_item.c_str(), FALSE);
+                copied = false;
             }
         } while (::FindNextFileW(find_handle, &find_data));
+        if (::GetLastError() != ERROR_NO_MORE_FILES)
+            copied = false;
         ::FindClose(find_handle);
+        return copied;
     }
 
     //递归删除目录内容（只删内容，最后尝试删除空目录本身）
@@ -720,9 +736,7 @@ bool CPulseBarApp::MigrateConfigDir(bool to_program_dir, CString& message)
         if (attributes == INVALID_FILE_ATTRIBUTES || (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0)
             continue;
         const std::wstring target_sub = target_dir + dir_name;
-        ::CreateDirectoryW(target_sub.c_str(), nullptr);
-        CopyDirectoryContents(source_sub, target_sub);
-        if (::GetFileAttributesW(target_sub.c_str()) == INVALID_FILE_ATTRIBUTES)
+        if (!CopyDirectoryContents(source_sub, target_sub))
             all_copied = false;
     }
     if (!all_copied)
@@ -730,6 +744,16 @@ bool CPulseBarApp::MigrateConfigDir(bool to_program_dir, CString& message)
         message = LoadMigrationText(IDS_CFG_DIR_CREATE_FAILED, L"Cannot create the configuration folder: <%path%>.");
         message.Replace(_T("<%path%>"), CString(target_dir.c_str()));
         return false;       //保持原目录，旧数据原样保留
+    }
+
+    //global_cfg.ini 决定下次启动从哪里读取数据，必须先可靠写入；失败则保留源目录。
+    CIniHelper ini{ m_module_dir + L"global_cfg.ini" };
+    ini.WriteBool(L"config", L"portable_mode", to_program_dir);
+    if (!ini.Save())
+    {
+        message = LoadMigrationText(IDS_CFG_DIR_CREATE_FAILED, L"Cannot create the configuration folder: <%path%>.");
+        message.Replace(_T("<%path%>"), CString((m_module_dir + L"global_cfg.ini").c_str()));
+        return false;
     }
 
     //移动语义：新位置已完整接管，清理旧位置的数据，避免两个目录同时存在配置
@@ -760,11 +784,6 @@ bool CPulseBarApp::MigrateConfigDir(bool to_program_dir, CString& message)
     m_config_path = target_dir + L"config.ini";
     m_history_traffic_path = target_dir + L"history_traffic.dat";
     m_log_path = target_dir + L"error.log";
-
-    //global_cfg.ini 固定在程序目录，决定下次启动从哪里读取数据
-    CIniHelper ini{ m_module_dir + L"global_cfg.ini" };
-    ini.WriteBool(L"config", L"portable_mode", to_program_dir);
-    ini.Save();
 
     message = LoadMigrationText(IDS_CFG_DIR_MIGRATED_INFO, L"Settings, traffic history and plugins were moved to: <%path%>. The previous location has been cleared; restarting is recommended.");
     message.Replace(_T("<%path%>"), CString(target_dir.c_str()));
@@ -847,9 +866,6 @@ void CPulseBarApp::DPIFromWindow(CWnd* pWnd)
 
 void CPulseBarApp::CheckUpdate(bool message)
 {
-    if (m_checking_update)      //如果还在检查更新，则直接返回
-        return;
-    CFlagLocker update_locker(m_checking_update);
     CWaitCursor wait_cursor;
 
     wstring version;        //程序版本
@@ -887,7 +903,14 @@ void CPulseBarApp::CheckUpdate(bool message)
         }
         return;
     }
-    if (version > VERSION)      //如果服务器上的版本大于本地版本
+    const auto update_available = IsNewerNumericVersion(version, VERSION);
+    if (!update_available.has_value())
+    {
+        if (message)
+            AfxMessageBox(CCommon::LoadText(IDS_CHECK_UPDATE_ERROR), MB_OK | MB_ICONWARNING);
+        return;
+    }
+    if (*update_available)      //如果服务器上的版本大于本地版本
     {
         CString info;
         //根据语言设置选择对应语言版本的更新内容
@@ -918,11 +941,18 @@ void CPulseBarApp::CheckUpdate(bool message)
 
 void CPulseBarApp::CheckUpdateInThread(bool message)
 {
-    AfxBeginThread(CheckUpdateThreadFunc, (LPVOID)message);
+    if (!TryBeginUpdateCheck(m_checking_update))
+        return;
+    if (AfxBeginThread(CheckUpdateThreadFunc, (LPVOID)message) == nullptr)
+        FinishUpdateCheck(m_checking_update);
 }
 
 UINT CPulseBarApp::CheckUpdateThreadFunc(LPVOID lpParam)
 {
+    struct ResetUpdateCheck {
+        std::atomic_bool& checking;
+        ~ResetUpdateCheck() { FinishUpdateCheck(checking); }
+    } reset{ theApp.m_checking_update };
     CCommon::SetThreadLanguage(theApp.m_general_data.language.language_id);     //设置线程语言
     theApp.m_plugin_update.RefreshAsync();  //插件目录请求独立于宿主版本检查结果
 #ifndef _DEBUG      //DEBUG下不在启动时检查更新
@@ -1072,7 +1102,12 @@ bool CPulseBarApp::GetAutoRun(wstring* auto_run_path, bool task_scheduler)
                 registered_path.pop_back();
             if (auto_run_path != nullptr)
                 *auto_run_path = registered_path;
-            return (m_module_path_reg == registered_path); //如果注册表的值是当前程序的路径，就返回true，否则返回false
+            wstring module_path = m_module_path_reg;
+            if (!module_path.empty() && module_path.front() == L'"')
+                module_path.erase(0, 1);
+            if (!module_path.empty() && module_path.back() == L'"')
+                module_path.pop_back();
+            return _wcsicmp(module_path.c_str(), registered_path.c_str()) == 0;
         }
         else
         {

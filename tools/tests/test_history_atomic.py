@@ -85,7 +85,7 @@ template<class File> bool BackupResult(File& file) {
 int wmain(int argc,wchar_t** argv) {
     if(argc!=3) return 2;
     const wstring mode=argv[1],root=argv[2];
-    if(root.find(L"E:\\AI\\Zcode\\tmp\\pulsebar-fix-20261105\\")!=0) return 3;
+    if(root.find(PULSEBAR_TEST_ROOT)!=0) return 3;
     const wstring path=root+L"\\atomic-"+mode+L".dat";
     const string original="lines: \"1\"\n2026/11/04 100/200\n";
     Seed(path,original);CHistoryTrafficFile file(path);file.Load();

@@ -3,10 +3,33 @@ from pathlib import Path
 import os
 import subprocess
 import tempfile
+from test_paths import configured_root
 
 SOURCE = Path(__file__).resolve().parents[2] / "PulseBar"
-RUN_ROOT = Path("E:/AI/Zcode/tmp/pulsebar-fix-20261105")
-VCVARS = Path("C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Auxiliary/Build/vcvars64.bat")
+RUN_ROOT = configured_root(SOURCE.parent)
+
+
+def find_vcvars():
+    configured = os.environ.get("PULSEBAR_VCVARS")
+    candidates = [Path(configured)] if configured else []
+    program_files = Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)"))
+    vswhere = program_files / "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
+    if not configured and vswhere.is_file():
+        result = subprocess.run(
+            [str(vswhere), "-latest", "-products", "*", "-requires",
+             "Microsoft.VisualStudio.Component.VC.Tools.x86.x64", "-property", "installationPath"],
+            capture_output=True, text=True, encoding="utf-8", timeout=10,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            candidates.append(Path(result.stdout.strip()) / "VC/Auxiliary/Build/vcvars64.bat")
+    if not configured:
+        for edition in ("BuildTools", "Enterprise", "Professional", "Community"):
+            candidates.append(program_files / "Microsoft Visual Studio/2022" / edition /
+                              "VC/Auxiliary/Build/vcvars64.bat")
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate.resolve()
+    raise FileNotFoundError("Visual Studio 2022 vcvars64.bat was not found; set PULSEBAR_VCVARS")
 
 
 def source(name):
@@ -65,12 +88,14 @@ def build(code, name):
     RUN_ROOT.mkdir(parents=True, exist_ok=True)
     run = Path(tempfile.mkdtemp(prefix=name + "-", dir=RUN_ROOT))
     cpp = run / "test.cpp"
-    cpp.write_text(code, encoding="utf-8")
+    root_literal = (str(RUN_ROOT) + "\\").replace("\\", "\\\\").replace('"', '\\"')
+    cpp.write_text(f'#define PULSEBAR_TEST_ROOT L"{root_literal}"\n' + code,
+                   encoding="utf-8")
     script = run / "build.cmd"
     script.write_text(f'''@echo off
 set "PYTHONUTF8=1"
 set "PYTHONIOENCODING=utf-8"
-call "{VCVARS}" >nul
+    call "{find_vcvars()}" >nul
 if errorlevel 1 exit /b %errorlevel%
 cd /d "{run}"
 cl /nologo /EHsc /std:c++20 /W4 /utf-8 /Od /I"{SOURCE}" test.cpp /Fe:test.exe

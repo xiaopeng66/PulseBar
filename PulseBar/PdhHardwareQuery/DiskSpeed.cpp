@@ -1,6 +1,7 @@
 ﻿#include "stdafx.h"
 #include "DiskSpeed.h"
 #include <winioctl.h>
+#include <algorithm>
 
 CDiskSpeedMonitor::CDiskSpeedMonitor() = default;
 
@@ -17,55 +18,54 @@ void CDiskSpeedMonitor::CloseHandles()
             CloseHandle(h);
     }
     m_handles.clear();
+    m_disk_numbers.clear();
     m_prev_read.clear();
     m_prev_write.clear();
     m_prev_valid.clear();
     m_has_prev = false;
+    m_rescan_requested = true;
 }
 
 void CDiskSpeedMonitor::EnsureHandles()
 {
-    if (!m_handles.empty())
+    const ULONGLONG now = GetTickCount64();
+    if (!m_rescan_requested && now - m_last_scan_tick < 5000)
         return;
+    m_last_scan_tick = now;
+    m_rescan_requested = false;
     for (int i = 0; i < 16; i++)
     {
+        if (std::find(m_disk_numbers.begin(), m_disk_numbers.end(), i) != m_disk_numbers.end())
+            continue;
         wchar_t path[64];
         swprintf_s(path, L"\\\\.\\PhysicalDrive%d", i);
         HANDLE h = CreateFileW(path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
         if (h == INVALID_HANDLE_VALUE)
-            break;
+            continue;
         DISK_PERFORMANCE dp{};
         DWORD ret = 0;
         if (DeviceIoControl(h, IOCTL_DISK_PERFORMANCE, nullptr, 0, &dp, sizeof(dp), &ret, nullptr))
         {
             m_handles.push_back(h);
+            m_disk_numbers.push_back(i);
+            m_prev_read.push_back(0);
+            m_prev_write.push_back(0);
+            m_prev_valid.push_back(false);
         }
         else
         {
             CloseHandle(h);
-            break;
         }
     }
-    //差分缓存与句柄一一对应,必须同步分配(否则 operator[] 越界)
-    m_prev_read.assign(m_handles.size(), 0);
-    m_prev_write.assign(m_handles.size(), 0);
-    m_prev_valid.assign(m_handles.size(), false);
 }
 
 bool CDiskSpeedMonitor::GetDiskSpeed(unsigned long long& read_bps, unsigned long long& write_bps)
 {
     read_bps = 0;
     write_bps = 0;
-    if (m_failed)
-        return false;
     EnsureHandles();
-    if (m_handles.empty())
-    {
-        //IOCTL 发不出(句柄没开成)或全部失败累计,连续 3 次放弃
-        if (++m_fail_count >= 3)
-            m_failed = true;
+    if (std::none_of(m_handles.begin(), m_handles.end(), [](HANDLE h) { return h != INVALID_HANDLE_VALUE; }))
         return false;
-    }
 
     size_t count = m_handles.size();
     //防御:差分缓存尺寸必须与句柄一致(EnsureHandles 已分配,这里兜底)
@@ -81,19 +81,24 @@ bool CDiskSpeedMonitor::GetDiskSpeed(unsigned long long& read_bps, unsigned long
     size_t ok_count = 0;
     for (size_t i = 0; i < count; i++)
     {
+        if (m_handles[i] == INVALID_HANDLE_VALUE)
+            continue;
         DWORD ret = 0;
         ok[i] = DeviceIoControl(m_handles[i], IOCTL_DISK_PERFORMANCE, nullptr, 0,
                                 &cur[i], sizeof(DISK_PERFORMANCE), &ret, nullptr) != 0;
         if (ok[i])
             ok_count++;
+        else if (m_handles[i] != INVALID_HANDLE_VALUE)
+        {
+            CloseHandle(m_handles[i]);
+            m_handles[i] = INVALID_HANDLE_VALUE;
+            m_disk_numbers[i] = -1;
+            m_prev_valid[i] = false;
+            m_rescan_requested = true;
+        }
     }
     if (ok_count == 0)
-    {
-        if (++m_fail_count >= 3)
-            m_failed = true;
         return false;
-    }
-    m_fail_count = 0;
 
     ULONGLONG now = GetTickCount64();
     bool have_rate = false;

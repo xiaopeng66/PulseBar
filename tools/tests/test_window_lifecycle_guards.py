@@ -9,6 +9,14 @@ spec.loader.exec_module(native)
 
 
 class WindowLifecycleGuards(unittest.TestCase):
+    def test_notify_icon_paths_do_not_recreate_taskbar_window(self):
+        source = native.source('PulseBarDlg.cpp')
+        add = native.method(source, 'void CPulseBarDlg::AddNotifyIcon()')
+        delete = native.method(source, 'void CPulseBarDlg::DeleteNotifyIcon()')
+        for method in (add, delete):
+            self.assertNotIn('CloseTaskBarWnd()', method)
+            self.assertNotIn('OpenTaskBarWnd()', method)
+
     def test_apply_revalidates_window_after_create_can_fail(self):
         body = native.method(native.source('PulseBarDlg.cpp'), 'void CPulseBarDlg::ApplySettings(')
         after = body[body.index('OpenTaskBarWnd();'):]
@@ -69,6 +77,14 @@ class WindowLifecycleGuards(unittest.TestCase):
         self.assertIn('OpenTaskBarWnd()', section)
         # 用户主动隐藏后不能自愈重开
         self.assertIn('theApp.m_cfg_data.m_show_task_bar_wnd && ', section)
+
+    def test_recovery_rechecks_taskbar_object_before_logging_or_warning(self):
+        timer = native.method(native.source('PulseBarDlg.cpp'), 'void CPulseBarDlg::OnTimer(')
+        recovery = timer[timer.index('m_timer_cnt % 10 == 1'):]
+        guard = recovery.index('m_tBarDlg->GetCannotInsertToTaskBar()')
+        self.assertIn('m_tBarDlg != nullptr &&', recovery[max(0, guard - 80):guard])
+        after_open = recovery[recovery.index('OpenTaskBarWnd();'):]
+        self.assertIn('m_tBarDlg != nullptr && IsTaskbarWndValid()', after_open)
 
     def test_taskbar_init_aborts_are_logged(self):
         init = native.method(native.source('TaskBarDlg.cpp'), 'BOOL CTaskBarDlg::OnInitDialog()')

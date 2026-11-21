@@ -7,9 +7,10 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from test_paths import run_root
 
 ROOT = Path(__file__).resolve().parents[2]
-RUN_ROOT = Path("E:/AI/Zcode/tmp/pulsebar-fix-20261105")
+RUN_ROOT = run_root("ci-language")
 
 
 def artifact_paths(job):

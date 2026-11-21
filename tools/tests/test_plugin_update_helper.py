@@ -99,8 +99,8 @@ static auto WaitForCatalog(CPluginUpdateHelper& helper) {
 }
 
 static const char* k_valid =
-    "<plugins><plugin file_name=\"MagpieTaskbar.dll\" version=\"1.3.0\" "
-    "download=\"Plugin.dll\" arch=\"x64\" description=\"缩放\" official=\"true\"/></plugins>";
+    "<plugins><plugin file_name=\"MagpieTaskbar.dll\" version=\"1.3.1\" "
+    "download=\"Plugin.dll\" arch=\"x64\" description=\"自动刷新\" official=\"true\"/></plugins>";
 
 static void CatalogFetch() {
     CPluginUpdateHelper helper;
@@ -118,7 +118,7 @@ static void CatalogFetch() {
     Check(first.status == Status::Ready && first.has_snapshot && first.items.size() == 1,
           "successful fetch publishes the complete catalog");
     const auto* item = FindPluginStoreItem(first.items, L"magpietaskbar.DLL");
-    Check(item && item->version.GetVersionWString() == L"1.3.0" && item->description == L"缩放" && item->official,
+    Check(item && item->version.GetVersionWString() == L"1.3.1" && item->description == L"自动刷新" && item->official,
           "lookup uses the Windows file name and decodes UTF-8 metadata");
     response = "<plugins/>";
     helper.RefreshAsync();
@@ -139,12 +139,14 @@ static void FailedRefresh() {
     helper.RefreshAsync();
     Check(WaitForCatalog(helper).status == Status::Ready, "manual retry can recover from a failed request");
     for (const char* bad : {"", "<plugins><plugin", "not XML", "<html/>",
-                             "<plugins><plugin file_name=\"broken.dll\"/></plugins>"}) {
+                             "<plugins><plugin file_name=\"broken.dll\"/></plugins>",
+                             "<plugins><plugin file_name=\"broken.dll\" version=\"1.beta.2\"/></plugins>",
+                             "<plugins><plugin file_name=\"broken.dll\" version=\"1..2\"/></plugins>"}) {
         response = bad;
         helper.RefreshAsync();
         snapshot = WaitForCatalog(helper);
         Check(snapshot.status == Status::Failed && snapshot.has_snapshot && snapshot.items.size() == 1
-            && snapshot.items.front().version.GetVersionWString() == L"1.3.0",
+            && snapshot.items.front().version.GetVersionWString() == L"1.3.1",
             "invalid response reports failure and preserves the last good catalog");
     }
     response_ok = false;
@@ -156,13 +158,17 @@ static void FailedRefresh() {
 static void StoreStatus() {
     PluginStoreItem item;
     item.file_name = L"MagpieTaskbar.dll";
-    item.version = PluginVersion(L"1.3.0");
+    item.version = PluginVersion(L"1.3.1");
     item.download_path = L"MagpieTaskbar.dll";
     item.arch = L"x64";
     using State = PluginStoreState;
-    Check(GetPluginStoreState(item, true, PluginVersion(L"1.2.0"), {}) == State::UpdateAvailable, "1.2.0 to 1.3.0 is an update");
-    Check(GetPluginStoreState(item, true, PluginVersion(L"1.3"), {}) == State::Installed, "equivalent versions do not offer an update");
+    Check(GetPluginStoreState(item, true, PluginVersion(L"1.3.0"), {}) == State::UpdateAvailable, "1.3.0 to 1.3.1 is an update");
+    Check(GetPluginStoreState(item, true, PluginVersion(L"1.3.1"), {}) == State::Installed, "equivalent versions do not offer an update");
     Check(GetPluginStoreState(item, true, PluginVersion(L"1.10.0"), {}) == State::NewerLocally, "numeric version comparison prevents downgrade");
+    Check(!(PluginVersion("1.beta.2") == PluginVersion("1.2")) &&
+          !(PluginVersion("1..2") == PluginVersion("1.2")) &&
+          !(PluginVersion("2147483648") == PluginVersion("2147483647")),
+          "malformed, empty, and overflowing version components are rejected");
     Check(GetPluginStoreState(item, true, {}, {}) == State::Installed, "unknown local version is not a claimed update");
     Check(GetPluginStoreState(item, false, {}, {}) == State::Available, "not installed is distinct from an update");
     item.arch = L"x86";

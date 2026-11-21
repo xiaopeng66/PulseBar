@@ -77,16 +77,7 @@ public:
             EmplaceAt(m_storage.GetPointerUnsafe(), other.m_storage.GetUnsafe());
         }
     }
-    CNullable& operator=(const CNullable& other)
-    {
-        this->m_has_value = other.m_has_value;
-        Deleter& ref_deleter = m_storage;
-        ref_deleter = static_cast<Deleter>(other.m_storage);
-        if (other)
-        {
-            EmplaceAt(m_storage.GetPointerUnsafe(), other.m_storage.GetUnsafe());
-        }
-    }
+    CNullable& operator=(const CNullable&) = delete;
     CNullable(CNullable&& other) noexcept
         : m_has_value{other.m_has_value}, m_storage{std::move(static_cast<Deleter>(other.m_storage))}
     {
@@ -95,16 +86,7 @@ public:
             EmplaceAt(m_storage.GetPointerUnsafe(), std::move(other.m_storage.GetUnsafe()));
         }
     }
-    CNullable& operator=(CNullable&& other) noexcept
-    {
-        this->m_has_value = other.m_has_value;
-        Deleter& ref_deleter = m_storage;
-        ref_deleter = std::move(static_cast<Deleter>(other.m_storage));
-        if (other)
-        {
-            EmplaceAt(m_storage.GetPointerUnsafe(), std::move(other.m_storage.GetUnsafe()));
-        }
-    }
+    CNullable& operator=(CNullable&&) = delete;
 
     template <class... Args>
     void Construct(Args&&... args)

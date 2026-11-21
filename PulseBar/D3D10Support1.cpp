@@ -130,7 +130,11 @@ auto CD3D10Support1::GetDeviceList(bool force_refresh)
         Destroy(&p_dxgi_factory1_wrapper);
         EmplaceAt(&p_dxgi_factory1_wrapper);
         p_dxgi_factory1_wrapper.Construct([](ComPtr<IDXGIFactory1>* p_content)
-                                          { CreateDXGIFactory1(IID_PPV_ARGS(&*p_content)); });
+        {
+            ThrowIfFailed<CD3D10Exception1>(
+                CreateDXGIFactory1(IID_PPV_ARGS(&*p_content)),
+                TRAFFICMONITOR_ERROR_STR("Create DXGI factory failed."));
+        });
     }
 
     using DeviceVector = std::vector<ComPtr<IDXGIAdapter1>>;
@@ -166,6 +170,10 @@ auto CD3D10Support1::GetDeviceList(bool force_refresh)
             } while (true); });
     }
 
+    if (result.GetUnsafe().Get().empty())
+        ThrowIfFailed<CD3D10Exception1>(
+            DXGI_ERROR_NOT_FOUND,
+            TRAFFICMONITOR_ERROR_STR("No DXGI adapters are available."));
     return result.GetUnsafe().Get();
 }
 
@@ -369,11 +377,11 @@ HRESULT CD3D10DrawCallWaiter::Wait() const noexcept
             return result;
         }
     }
-    const auto start_time = std::chrono::system_clock::now();
+    const auto start_time = std::chrono::steady_clock::now();
     using namespace std::chrono_literals;
     do
     {
         result = m_p_query->GetData(NULL, 0, 0);
-    } while (result != S_FALSE && std::chrono::system_clock::now() - start_time < 1500ms);
+    } while (result == S_FALSE && std::chrono::steady_clock::now() - start_time < 1500ms);
     return result;
 }

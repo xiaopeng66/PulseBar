@@ -10,10 +10,8 @@ from pathlib import Path
 import importlib.util
 
 HERE = Path(__file__).resolve().parent
-TESTS = HERE if (HERE / "native_test_support.py").is_file() else Path("E:/AI/Zcode/projects/traffic-monitor/src/tools/tests")
-spec = importlib.util.spec_from_file_location("history_base", TESTS / "test_history_regressions.py")
-history = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(history)
+TESTS = HERE
+import test_history_regressions as history
 native = history.native
 if "review-" in HERE.name:
     native.RUN_ROOT = HERE
@@ -34,7 +32,7 @@ string ReadRaw(const wstring& path) { ifstream f(path,ios::binary); return strin
 int wmain(int argc,wchar_t** argv) {
     if(argc!=3) return 2;
     const wstring mode=argv[1],root=argv[2];
-    if(root.find(L"E:\\AI\\Zcode\\tmp\\pulsebar-fix-20261105\\")!=0) return 3;
+    if(root.find(PULSEBAR_TEST_ROOT)!=0) return 3;
     test_clock.wDay=5;
     const wstring path=root+L"\\review-"+mode+L".dat";
     const string backup="lines: \"2\"\r\n2026/11/04 100/200\r\n2026/11/03 300/400\r\n";

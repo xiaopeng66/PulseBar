@@ -1,6 +1,9 @@
 ﻿#include "stdafx.h"
 #include "Common.h"
 #include "PulseBar.h"
+#include <cstring>
+#include <limits>
+#include <memory>
 #pragma comment(lib, "Shlwapi.lib")
 
 
@@ -894,20 +897,30 @@ bool CCommon::IsForegroundFullscreen(HMONITOR hMonitor)
 
 bool CCommon::CopyStringToClipboard(const wstring& str)
 {
-    if (OpenClipboard(NULL))
-    {
-        HGLOBAL clipbuffer;
-        EmptyClipboard();
-        size_t size = (str.size() + 1) * 2;
-        clipbuffer = GlobalAlloc(GMEM_DDESHARE, size);
-        memcpy_s(GlobalLock(clipbuffer), size, str.c_str(), size);
-        GlobalUnlock(clipbuffer);
-        if (SetClipboardData(CF_UNICODETEXT, clipbuffer) == NULL)
-            return false;
-        CloseClipboard();
-        return true;
-    }
-    else return false;
+    if (!OpenClipboard(NULL))
+        return false;
+    const auto close_clipboard = [](void*) noexcept { CloseClipboard(); };
+    std::unique_ptr<void, decltype(close_clipboard)> clipboard_guard{reinterpret_cast<void*>(1), close_clipboard};
+    if (str.size() >= ((std::numeric_limits<size_t>::max)() / sizeof(wchar_t)))
+        return false;
+
+    const size_t size = (str.size() + 1) * sizeof(wchar_t);
+    HGLOBAL clipbuffer = GlobalAlloc(GMEM_MOVEABLE, size);
+    if (clipbuffer == nullptr)
+        return false;
+    const auto free_clipbuffer = [](void* memory) noexcept { GlobalFree(static_cast<HGLOBAL>(memory)); };
+    std::unique_ptr<void, decltype(free_clipbuffer)> memory_guard{clipbuffer, free_clipbuffer};
+    auto* text = static_cast<wchar_t*>(GlobalLock(clipbuffer));
+    if (text == nullptr)
+        return false;
+    std::memcpy(text, str.c_str(), size);
+    GlobalUnlock(clipbuffer);
+    if (!EmptyClipboard())
+        return false;
+    if (SetClipboardData(CF_UNICODETEXT, clipbuffer) == NULL)
+        return false;
+    memory_guard.release();
+    return true;
 }
 
 

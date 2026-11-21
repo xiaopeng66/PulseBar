@@ -3,6 +3,112 @@
 #include "SettingsHelper.h"
 #include "PulseBar.h"
 
+namespace
+{
+    using StableColorMap = std::map<std::wstring, TaskbarItemColor>;
+
+    std::wstring StableColorIdentity(const CommonDisplayItem& item)
+    {
+        const wchar_t* item_id = item.GetItemIniKeyName();
+        if (item_id == nullptr || *item_id == L'\0')
+            return {};
+        return std::wstring(item.IsPlugin() ? L"plugin:" : L"builtin:") + item_id;
+    }
+
+    std::wstring EncodeColorIdentity(const std::wstring& identity)
+    {
+        constexpr wchar_t digits[] = L"0123456789abcdef";
+        std::wstring encoded;
+        encoded.reserve(identity.size() * 4);
+        for (wchar_t ch : identity)
+        {
+            const auto unit = static_cast<unsigned short>(ch);
+            for (int shift = 12; shift >= 0; shift -= 4)
+                encoded.push_back(digits[(unit >> shift) & 0x0f]);
+        }
+        return encoded;
+    }
+
+    bool DecodeColorIdentity(const std::wstring& encoded, std::wstring& identity)
+    {
+        if (encoded.empty() || encoded.size() % 4 != 0)
+            return false;
+        identity.clear();
+        for (size_t i = 0; i < encoded.size(); i += 4)
+        {
+            unsigned short unit{};
+            for (size_t j = 0; j < 4; ++j)
+            {
+                const wchar_t ch = encoded[i + j];
+                const unsigned int digit = ch >= L'0' && ch <= L'9' ? ch - L'0'
+                    : ch >= L'a' && ch <= L'f' ? ch - L'a' + 10
+                    : ch >= L'A' && ch <= L'F' ? ch - L'A' + 10 : 16;
+                if (digit == 16)
+                    return false;
+                unit = static_cast<unsigned short>((unit << 4) | digit);
+            }
+            identity.push_back(static_cast<wchar_t>(unit));
+        }
+        return true;
+    }
+
+    bool ParseColorValue(const std::wstring& text, COLORREF& value)
+    {
+        if (text.empty())
+            return false;
+        wchar_t* end{};
+        errno = 0;
+        const unsigned long parsed = std::wcstoul(text.c_str(), &end, 10);
+        if (errno == ERANGE || end != text.c_str() + text.size() || parsed > 0xffffffffUL)
+            return false;
+        value = static_cast<COLORREF>(parsed);
+        return true;
+    }
+
+    bool ParseStableColorMap(const std::wstring& text, StableColorMap& colors)
+    {
+        if (text.compare(0, 3, L"v1|") != 0)
+            return false;
+        StableColorMap parsed_colors;
+        size_t start = 3;
+        while (start < text.size())
+        {
+            const size_t end = text.find(L'|', start);
+            const auto record = text.substr(start, end == std::wstring::npos ? end : end - start);
+            const size_t equals = record.find(L'=');
+            const size_t comma = equals == std::wstring::npos ? std::wstring::npos : record.find(L',', equals + 1);
+            std::wstring identity;
+            COLORREF label{}, value{};
+            if (equals == std::wstring::npos || comma == std::wstring::npos
+                || !DecodeColorIdentity(record.substr(0, equals), identity)
+                || !ParseColorValue(record.substr(equals + 1, comma - equals - 1), label)
+                || !ParseColorValue(record.substr(comma + 1), value))
+                return false;
+            parsed_colors[std::move(identity)] = { label, value };
+            if (end == std::wstring::npos)
+                break;
+            start = end + 1;
+        }
+        colors = std::move(parsed_colors);
+        return true;
+    }
+
+    std::wstring SerializeStableColorMap(const StableColorMap& colors)
+    {
+        std::wstring serialized = L"v1|";
+        bool first = true;
+        for (const auto& [identity, color] : colors)
+        {
+            if (!first)
+                serialized.push_back(L'|');
+            first = false;
+            serialized += EncodeColorIdentity(identity);
+            serialized += L'=' + std::to_wstring(color.label) + L',' + std::to_wstring(color.value);
+        }
+        return serialized;
+    }
+}
+
 CSettingsHelper::CSettingsHelper()
     : CIniHelper(theApp.m_config_path)
 {
@@ -42,20 +148,39 @@ void CSettingsHelper::LoadTaskbarWndColors(const wchar_t* AppName, const wchar_t
 {
     wstring str{ default_str };
     _GetString(AppName, KeyName, str);
+    const std::wstring stable_key = std::wstring(KeyName) + L"_by_id";
+    std::wstring stable_text;
+    StableColorMap stable_colors;
+    if (_GetString(AppName, stable_key.c_str(), stable_text) && ParseStableColorMap(stable_text, stable_colors))
+    {
+        const COLORREF default_color = _wtoi(default_str);
+        for (const auto& item : theApp.m_plugins.AllDisplayItemsWithPlugins())
+        {
+            const auto identity = StableColorIdentity(item);
+            const auto saved = stable_colors.find(identity);
+            text_colors[item] = identity.empty() || saved == stable_colors.end()
+                ? TaskbarItemColor{ default_color, default_color } : saved->second;
+        }
+        return;
+    }
     std::vector<wstring> split_result;
     CCommon::StringSplit(str, L',', split_result);
     size_t index = 0;
     COLORREF default_color = _wtoi(default_str);
     for (auto iter = theApp.m_plugins.AllDisplayItemsWithPlugins().begin(); iter != theApp.m_plugins.AllDisplayItemsWithPlugins().end(); ++iter)
     {
-        if (index < split_result.size())
+        if (iter->IsPlugin())
+        {
+            text_colors[*iter] = { default_color, default_color };
+        }
+        else if (index < split_result.size())
             text_colors[*iter].label = _wtoi(split_result[index].c_str());
         //else if (!split_result.empty())
         //    text_colors[*iter].label = _wtoi(split_result[0].c_str());
         else
             text_colors[*iter].label = default_color;
 
-        if (index + 1 < split_result.size())
+        if (!iter->IsPlugin() && index + 1 < split_result.size())
             text_colors[*iter].value = _wtoi(split_result[index + 1].c_str());
         //else if (split_result.size() > 1)
         //    text_colors[*iter].value = _wtoi(split_result[1].c_str());
@@ -75,13 +200,22 @@ void CSettingsHelper::LoadTaskbarWndColors(const wchar_t* AppName, const wchar_t
 void CSettingsHelper::SaveTaskbarWndColors(const wchar_t* AppName, const wchar_t* KeyName, const std::map<CommonDisplayItem, TaskbarItemColor>& text_colors)
 {
     CString str;
+    const std::wstring stable_key = std::wstring(KeyName) + L"_by_id";
+    StableColorMap stable_colors;
+    std::wstring previous_stable_text;
+    if (_GetString(AppName, stable_key.c_str(), previous_stable_text))
+        ParseStableColorMap(previous_stable_text, stable_colors);
     for (auto iter = text_colors.begin(); iter != text_colors.end(); ++iter)
     {
         CString tmp;
         tmp.Format(_T("%d,%d,"), iter->second.label, iter->second.value);
         str += tmp;
+        const auto identity = StableColorIdentity(iter->first);
+        if (!identity.empty())
+            stable_colors[identity] = iter->second;
     }
     _WriteString(AppName, KeyName, wstring(str));
+    _WriteString(AppName, stable_key.c_str(), SerializeStableColorMap(stable_colors));
 }
 
 namespace

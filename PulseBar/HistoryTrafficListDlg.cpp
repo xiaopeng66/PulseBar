@@ -184,12 +184,14 @@ void CHistoryTrafficListDlg::ShowListData()
                 data.str = date_str;
                 data.up_kBytes = traffic.up_kBytes;
                 data.down_kBytes = traffic.down_kBytes;
+                data.mixed = traffic.mixed;
                 list_data.push_back(data);
             }
             else
             {
                 list_data.back().up_kBytes += traffic.up_kBytes;
                 list_data.back().down_kBytes += traffic.down_kBytes;
+                list_data.back().mixed = list_data.back().mixed || traffic.mixed;
             }
         }
 

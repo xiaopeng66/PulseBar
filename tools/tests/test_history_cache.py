@@ -16,7 +16,7 @@ template<class File> void SetToday(File& file,unsigned long long up,unsigned lon
 }
 int wmain(int argc,wchar_t** argv) {
     if(argc!=3)return 2;wstring root=argv[2];
-    if(root.find(L"E:\\AI\\Zcode\\tmp\\pulsebar-fix-20261105\\")!=0)return 3;
+    if(root.find(PULSEBAR_TEST_ROOT)!=0)return 3;
     wstring path=root+L"\\cache.dat";
     Seed(path,"lines: \"2\"\n2026/11/04 100/200\n2026/11/03 300/400\n");
     CHistoryTrafficFile file(path);file.Load();auto initial=file.GetTraffics();

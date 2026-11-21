@@ -6,18 +6,18 @@
 - ASCII 原样；
 - 乱码的字体名「微软雅黑」→ 正确值。
 """
-from pathlib import Path
-import importlib.util
-import sys
+def main():
+    from pathlib import Path
+    import importlib.util
 
-SUPPORT = Path(__file__).resolve().with_name("native_test_support.py")
-spec = importlib.util.spec_from_file_location("repair_support", SUPPORT)
-native = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(native)
+    support = Path(__file__).resolve().with_name("native_test_support.py")
+    spec = importlib.util.spec_from_file_location("repair_support", support)
+    native = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(native)
 
-body = native.method(native.source("Common.cpp"), "std::wstring CCommon::RepairMisdecodedText(")
+    body = native.method(native.source("Common.cpp"), "std::wstring CCommon::RepairMisdecodedText(")
 
-code = r'''#include <windows.h>
+    code = r'''#include <windows.h>
 #include <cstdio>
 #include <string>
 struct CCommon {
@@ -47,13 +47,13 @@ int wmain() {
 }
 '''
 
-run, env = native.build(code, "display-text-repair")
-exit_code = native.execute(run, env, "repair")
-print("ARTIFACTS", run.as_posix())
+    run, env = native.build(code, "display-text-repair")
+    exit_code = native.execute(run, env, "repair")
+    print("ARTIFACTS", run.as_posix())
 
-# 丢失字节的乱码无法还原，必须能被识别出来以退回默认文案
-lost = native.method(native.source("SettingsHelper.cpp"), "bool HasLostByteMojibake(")
-code2 = r'''#include <cstdio>
+    # 丢失字节的乱码无法还原，必须能被识别出来以退回默认文案
+    lost = native.method(native.source("SettingsHelper.cpp"), "bool HasLostByteMojibake(")
+    code2 = r'''#include <cstdio>
 #include <string>
 ''' + native.no_includes(lost) + r'''
 static int checks{}, failures{};
@@ -70,7 +70,11 @@ int wmain() {
     return failures ? 1 : 0;
 }
 '''
-run2, env2 = native.build(code2, "display-text-lost-byte")
-exit2 = native.execute(run2, env2, "lost")
-print("ARTIFACTS", run2.as_posix())
-sys.exit(0 if (exit_code and exit2) else 1)
+    run2, env2 = native.build(code2, "display-text-lost-byte")
+    exit2 = native.execute(run2, env2, "lost")
+    print("ARTIFACTS", run2.as_posix())
+    return 0 if (exit_code and exit2) else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

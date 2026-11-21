@@ -415,7 +415,6 @@ void CHistoryTrafficCalendarDlg::OnMouseMove(UINT nFlags, CPoint point)
     // TODO: 在此添加消息处理程序代码和/或调用默认值
     int tip_day{};      //要显示鼠标提示的日期
     DayTraffic tip_traffic{};
-    static int last_tip_day{};
     //查找鼠标指针在哪个日期的矩形内
     for (int i{}; i < CALENDAR_HEIGHT; i++)
     {
@@ -431,7 +430,7 @@ void CHistoryTrafficCalendarDlg::OnMouseMove(UINT nFlags, CPoint point)
         }
     }
     bool show_tip = (tip_day > 0);
-    if (show_tip && last_tip_day != tip_day)
+    if (show_tip && (m_last_tip_year != m_year || m_last_tip_month != m_month || m_last_tip_day != tip_day))
     {
         CString tip_info;
         tip_info.Format(_T("%d/%d/%d\r\n"), m_year, m_month, tip_day);
@@ -447,15 +446,19 @@ void CHistoryTrafficCalendarDlg::OnMouseMove(UINT nFlags, CPoint point)
             tip_info += CCommon::KBytesToString(tip_traffic.down_traffic);
         }
 
-        m_tool_tips.AddTool(this, tip_info);
+        m_tool_tips.UpdateTipText(tip_info, this);
         m_tool_tips.Pop();
-        last_tip_day = tip_day;
+        m_last_tip_year = m_year;
+        m_last_tip_month = m_month;
+        m_last_tip_day = tip_day;
     }
-    if (!show_tip)
+    if (!show_tip && m_last_tip_day != 0)
     {
-        m_tool_tips.AddTool(this, _T(""));
+        m_tool_tips.UpdateTipText(_T(""), this);
         m_tool_tips.Pop();
-        last_tip_day = 0;
+        m_last_tip_year = 0;
+        m_last_tip_month = 0;
+        m_last_tip_day = 0;
     }
 
     CTabDlg::OnMouseMove(nFlags, point);

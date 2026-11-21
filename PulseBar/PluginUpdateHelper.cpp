@@ -11,28 +11,36 @@
 
 #pragma comment(lib, "wininet.lib")
 
-static void VersionFromString(const std::string& version_str, std::vector<int>& versions)
+static bool VersionFromString(const std::string& version_str, std::vector<int>& versions)
 {
     versions.clear();
-    //拆分字符串
-    std::vector<std::string> vec_version;
-    CCommon::StringSplit(version_str, '.', vec_version);
-    //转换为整数保存
-    for (const auto& str : vec_version)
+    if (version_str.empty())
+        return false;
+    int component{};
+    bool have_digit{};
+    for (const char ch : version_str)
     {
-        //去掉除数字以外的字符
-        std::string str_ver;
-        for (auto ch : str)
+        if (ch == '.')
         {
-            if (ch >= '0' && ch <= '9')
-                str_ver.push_back(ch);
+            if (!have_digit)
+                return false;
+            versions.push_back(component);
+            component = 0;
+            have_digit = false;
+            continue;
         }
-
-        //atoi 对超长数字是未定义行为（清单来自网络），用 strtol 并钳制到 int
-        errno = 0;
-        const long parsed = std::strtol(str_ver.c_str(), nullptr, 10);
-        versions.push_back(parsed > INT_MAX ? INT_MAX : static_cast<int>(parsed));
+        if (ch < '0' || ch > '9')
+            return false;
+        const int digit = ch - '0';
+        if (component > (INT_MAX - digit) / 10)
+            return false;
+        component = component * 10 + digit;
+        have_digit = true;
     }
+    if (!have_digit)
+        return false;
+    versions.push_back(component);
+    return true;
 }
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -43,13 +51,15 @@ PluginVersion::PluginVersion()
 PluginVersion::PluginVersion(const std::wstring& version)
 {
     m_version_str = CCommon::AsciiToStr(version);
-    VersionFromString(m_version_str, m_version);
+    if (!VersionFromString(m_version_str, m_version))
+        m_version_str.clear();
 }
 
 PluginVersion::PluginVersion(const std::string& version)
 {
     m_version_str = version;
-    VersionFromString(m_version_str, m_version);
+    if (!VersionFromString(m_version_str, m_version))
+        m_version_str.clear();
 }
 
 bool PluginVersion::operator<(const PluginVersion& another) const
@@ -159,9 +169,9 @@ static std::optional<std::vector<PluginStoreItem>> FetchPluginCatalog()
         item.arch = CCommon::StrToUnicode(CTinyXml2Helper::ElementAttribute(ele, "arch"), true);
         const std::string official_flag(CTinyXml2Helper::ElementAttribute(ele, "official"));
         item.official = (official_flag == "true" || official_flag == "1");
-        //缺文件名无法与本地插件匹配；缺版本的条目会让版本比较退化成 0，
+        //缺文件名无法与本地插件匹配；缺失或无效版本无法安全比较，
         //两者都不入表，避免商店显示空版本或误报「有更新」
-        if (item.file_name.empty() || item.version.GetVersionString().find_first_of("0123456789") == std::string::npos)
+        if (item.file_name.empty() || item.version.GetVersionString().empty())
             return;
         store_items.push_back(std::move(item));
     });

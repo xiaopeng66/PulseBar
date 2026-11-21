@@ -5,17 +5,18 @@
 ## 环境与运行
 
 - Windows、Python 3.10+、Visual Studio 2022 Build Tools（MSVC、Windows SDK、MFC）。
-- `native_test_support.py` 使用当前源码路径，默认工具链为 VS2022 BuildTools。
-- 本工作区的安全约束要求所有测试产物写入 `E:/AI/Zcode/tmp/pulsebar-fix-20261105/` 的独占子目录。运行后保留 `test.cpp`、编译及模式日志；归档后再清理这些子目录。
-- 用 `-I -B -X utf8` 避免从当前目录导入不相关模块、写入字节码及 Windows 默认编码差异。
+- `native_test_support.py` 使用当前源码路径，并通过 `vswhere` 定位已安装的 Visual Studio 2022；可用 `PULSEBAR_VCVARS` 显式指定 `vcvars64.bat`。
+- 原生测试产物默认写入系统临时目录下的独立 `pulsebar-regression` 文件夹。设置 `PULSEBAR_TEST_ROOT` 可选择另一个绝对路径；测试会拒绝仓库目录本身、仓库内部及包含仓库的路径。每次运行在此根目录中新建专属子目录，保留 `test.cpp`、编译及模式日志。
+- 使用仓库相对路径运行，避免从当前目录导入同名模块；`-B -X utf8` 禁止字节码文件并统一 Windows 编码。
 
 示例：
 
 ```text
-python -X utf8 -I -B E:/AI/Zcode/projects/traffic-monitor/src/tools/tests/test_history_atomic.py
-python -X utf8 -I -B E:/AI/Zcode/projects/traffic-monitor/src/tools/tests/test_network_refresh_chain.py
-python -X utf8 -I -B E:/AI/Zcode/projects/traffic-monitor/src/tools/tests/test_ui_regressions.py
-python -X utf8 -I -B E:/AI/Zcode/projects/traffic-monitor/src/tools/tests/test_options_apply.py --verify-mutations
+python -X utf8 -B -m unittest discover -s tools/tests -p 'test_*.py'
+python -X utf8 -B tools/tests/test_history_atomic.py
+python -X utf8 -B tools/tests/test_network_refresh_chain.py
+python -X utf8 -B tools/tests/test_ui_regressions.py
+python -X utf8 -B tools/tests/test_options_apply.py --verify-mutations
 ```
 
 ## 覆盖范围
