@@ -2,6 +2,7 @@
 #include "BaseDialog.h"
 #include "LinkStatic.h"
 #include "ListCtrlEx.h"
+#include "PluginUpdateHelper.h"
 
 // CPluginManagerDlg 对话框
 
@@ -26,10 +27,12 @@ private:
     CLinkStatic m_plugin_dev_guide_lnk;
     CLinkStatic m_open_plugin_dir_lnk;
     CImageList m_plugin_icon_list;
-    std::wstring m_selected_update_file;
+    CPluginPackageInstall m_install;
 
+    const PluginStoreItem* GetSelectedUpdate(const CPluginUpdateHelper::Catalog& catalog) const;
     void RefreshUpdateColumns();
-    void OpenStore(const std::wstring& selected_file = {});
+    void ShowUpdateError(const wchar_t* error);
+    void OpenStore();
 
 protected:
     virtual void DoDataExchange(CDataExchange* pDX);    // DDX/DDV 支持

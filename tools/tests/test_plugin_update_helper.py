@@ -12,12 +12,15 @@ def make_code():
     source = native.source("PluginUpdateHelper.cpp")
     source = source.replace(native.method(source, "static bool ReadPluginCatalog("), "")
     source = source.replace('#pragma comment(lib, "wininet.lib")', "")
+    source = source.replace(native.method(source, "    bool DownloadBinaryFile("), "")
     replace_signature = "PluginInstallResult CommitPluginUpdate("
     replacement = native.method(source, replace_signature)
     source = source.replace(replacement, replacement.replace("::MoveFileExW(", "MovePluginFile("))
     return r'''#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <bcrypt.h>
 #include <atomic>
+#include <future>
 #include <chrono>
 #include <cstdio>
 #include <cstring>
@@ -32,6 +35,7 @@ def make_code():
 #include <thread>
 #include <vector>
 #include "tinyxml2/tinyxml2.cpp"
+#include "language.h"
 using namespace std;
 using namespace std::chrono_literals;
 
@@ -70,6 +74,12 @@ static bool ReadPluginCatalog(const wstring&, string& body) {
     return true;
 }
 
+static wstring package_source;
+static bool DownloadBinaryFile(const wstring& url, const wstring& path) {
+    return url == L"https://fixture.invalid/package.dll"
+        && ::CopyFileW(package_source.c_str(), path.c_str(), FALSE);
+}
+
 static bool deny_staged_move = false;
 static int denied_moves = 0;
 static BOOL MovePluginFile(const wchar_t* from, const wchar_t* to, DWORD flags) {
@@ -87,9 +97,10 @@ static BOOL MovePluginFile(const wchar_t* from, const wchar_t* to, DWORD flags) 
 
 using Status = CPluginUpdateHelper::Status;
 static int failures = 0;
-static void Check(bool ok, const char* label) {
+static bool Check(bool ok, const char* label) {
     printf("%s %s\n", ok ? "PASS" : "FAIL", label);
     if (!ok) ++failures;
+    return ok;
 }
 
 static auto WaitForCatalog(CPluginUpdateHelper& helper) {
@@ -208,6 +219,50 @@ static void FileReplacement(const wstring& folder) {
           "a retry installs the new file without losing the original before replacement");
 }
 
+static void SharedInstall(const wstring& folder) {
+    const auto directory = folder + L"\\plugins\\";
+    ::CreateDirectoryW(directory.c_str(), nullptr);
+    const auto target = directory + L"fixture.dll";
+    Write(target, 'a');
+
+    wchar_t system_directory[MAX_PATH]{};
+    if (!Check(::GetSystemDirectoryW(system_directory, MAX_PATH) != 0, "locate an offline x64 DLL fixture")) return;
+    package_source = wstring(system_directory) + L"\\kernel32.dll";
+    CPluginUpdateHelper helper;
+    CPluginPackageInstall install;
+    PluginStoreItem item;
+    item.file_name = L".\\fixture.dll";
+    item.download_path = L"https://fixture.invalid/package.dll";
+    item.version = PluginVersion(L"1.4.1");
+    const auto* invalid = install.Start(item, directory);
+    Check(invalid && wcscmp(invalid, IDS_STORE_INVALID_NAME) == 0 && !install.IsActive(),
+          "invalid catalog name is rejected before staging");
+
+    item.file_name = L"fixture.dll";
+    item.sha256 = wstring(64, L'0');
+    if (!Check(install.Start(item, directory) == nullptr, "begin download with fixture checksum")) return;
+    auto wait = [&]() {
+        for (int i = 0; i < 5000 && !install.IsReady(); ++i) this_thread::sleep_for(1ms);
+        return install.IsReady();
+    };
+    if (!Check(wait(), "checksum test download completes")) return;
+    const auto bad = install.Finish(helper);
+    Check(bad.error && wcscmp(bad.error, IDS_STORE_SHA_MISMATCH) == 0 && !install.IsActive()
+        && !helper.HasPendingRestart() && Read(target) == 'a',
+        "checksum mismatch preserves the installed DLL and allows retry");
+
+    item.sha256.clear();
+    if (!Check(install.Start(item, directory) == nullptr, "start the retry")) return;
+    item.file_name = L"other.dll";
+    if (!Check(wait(), "retry completes")) return;
+    Check(Read(target) == 'a' && !helper.HasPendingRestart(), "worker only stages the file");
+    const auto installed = install.Finish(helper);
+    Check(installed.error == nullptr && installed.version.GetVersionWString() == L"1.4.1"
+        && helper.GetPendingVersion(L"fixture.dll").GetVersionWString() == L"1.4.1"
+        && Read(target) == 'M' && Read(directory + L"other.dll") == EOF,
+        "commit installs the original selection and marks it pending restart");
+}
+
 int wmain(int argc, wchar_t** argv) {
     if (argc != 3) return 2;
     const wstring mode = argv[1];
@@ -215,6 +270,7 @@ int wmain(int argc, wchar_t** argv) {
     else if (mode == L"failed-refresh") FailedRefresh();
     else if (mode == L"store-status") StoreStatus();
     else if (mode == L"file-replacement") FileReplacement(argv[2]);
+    else if (mode == L"shared-install") SharedInstall(argv[2]);
     else return 2;
     return failures ? 1 : 0;
 }
@@ -222,7 +278,7 @@ int wmain(int argc, wchar_t** argv) {
 
 
 def main():
-    cases = ("catalog-fetch", "failed-refresh", "store-status", "file-replacement")
+    cases = ("catalog-fetch", "failed-refresh", "store-status", "file-replacement", "shared-install")
     run, env = native.build(make_code(), "plugin-update-helper")
     passed = sum(native.execute(run, env, case, timeout=15) for case in cases)
     print(f"RESULT {passed}/{len(cases)} scenarios")

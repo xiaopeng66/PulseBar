@@ -1,4 +1,5 @@
 ﻿#pragma once
+#include <future>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -81,3 +82,25 @@ PluginStoreState GetPluginStoreState(const PluginStoreItem& item, bool installed
 enum class PluginInstallResult { Installed, InUse, Failed };
 PluginInstallResult CommitPluginUpdate(const std::wstring& staged_path, const std::wstring& target_path);
 
+
+bool IsSafePluginFileName(const std::wstring& name);
+
+//两个对话框共用的下载安装流程。等待和文件校验发生在后台，完成后由界面提交。
+class CPluginPackageInstall
+{
+public:
+    struct Completion
+    {
+        PluginVersion version;
+        const wchar_t* error;
+    };
+
+    const wchar_t* Start(const PluginStoreItem& item, const std::wstring& directory);
+    bool IsActive() const { return m_download.valid(); }
+    bool IsReady() const;
+    Completion Finish(CPluginUpdateHelper& updates);
+
+private:
+    struct Download;
+    std::future<std::shared_ptr<Download>> m_download;
+};

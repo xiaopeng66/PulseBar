@@ -11,7 +11,7 @@
 
 namespace
 {
-    constexpr UINT_PTR CatalogTimer = 1;
+    constexpr UINT_PTR UpdateTimer = 1;
 
     void RequestPluginRestart()
     {
@@ -49,21 +49,33 @@ void CPluginManagerDlg::EnableControl()
     EnableDlgCtrl(IDC_OPTINS_BUTTON, enable);
     EnableDlgCtrl(IDC_PLUGIN_INFO_BUTTON, enable);
 
-    m_selected_update_file.clear();
-    if (IsSelectedValid())
-    {
-        const auto& plugin = theApp.m_plugins.GetPlugins()[m_item_selected];
-        const auto file_name = CFilePathHelper(plugin.file_path).GetFileName();
-        const auto catalog = theApp.m_plugin_update.GetCatalog();
-        const auto* store_item = FindPluginStoreItem(catalog.items, file_name);
-        if (store_item != nullptr && GetPluginStoreState(*store_item, true,
-            PluginVersion(plugin.Property(ITMPlugin::TMI_VERSION)), theApp.m_plugin_update.GetPendingVersion(file_name))
-            == PluginStoreState::UpdateAvailable)
-            m_selected_update_file = file_name;
-    }
-    const bool restart = theApp.m_plugin_update.HasPendingRestart() && m_selected_update_file.empty();
-    SetDlgItemText(IDC_PLUGIN_MANAGE_UPDATE, CCommon::LoadText(restart ? TXT_PLUGIN_RESTART : TXT_PLUGIN_OPEN_UPDATE));
-    EnableDlgCtrl(IDC_PLUGIN_MANAGE_UPDATE, restart || !m_selected_update_file.empty());
+    const bool installing = m_install.IsActive();
+    const auto catalog = theApp.m_plugin_update.GetCatalog();
+    const bool can_update = !installing && GetSelectedUpdate(catalog) != nullptr;
+    const bool can_restart = !installing && !can_update && theApp.m_plugin_update.HasPendingRestart();
+    SetDlgItemText(IDC_PLUGIN_MANAGE_UPDATE, CCommon::LoadText(can_restart ? TXT_PLUGIN_RESTART : TXT_PLUGIN_UPDATE));
+    EnableDlgCtrl(IDC_PLUGIN_MANAGE_UPDATE, can_update || can_restart);
+    EnableDlgCtrl(IDC_PLUGIN_CHECK_UPDATES, !installing && catalog.status != CPluginUpdateHelper::Status::Checking);
+    EnableDlgCtrl(IDC_INSTALL_PLUGIN_BUTTON, !installing);
+    m_plugin_download_lnk.EnableWindow(!installing);
+}
+
+const PluginStoreItem* CPluginManagerDlg::GetSelectedUpdate(const CPluginUpdateHelper::Catalog& catalog) const
+{
+    if (catalog.status == CPluginUpdateHelper::Status::Checking)
+        return nullptr;
+    const auto& plugins = theApp.m_plugins.GetPlugins();
+    const int index = m_list_ctrl.GetNextItem(-1, LVNI_SELECTED);
+    if (index < 0 || index >= static_cast<int>(plugins.size()))
+        return nullptr;
+
+    const auto& plugin = plugins[index];
+    const auto file_name = CFilePathHelper(plugin.file_path).GetFileName();
+    const auto* item = FindPluginStoreItem(catalog.items, file_name);
+    if (item != nullptr && GetPluginStoreState(*item, true, PluginVersion(plugin.Property(ITMPlugin::TMI_VERSION)),
+        theApp.m_plugin_update.GetPendingVersion(file_name)) == PluginStoreState::UpdateAvailable)
+        return item;
+    return nullptr;
 }
 
 bool CPluginManagerDlg::IsSelectedValid()
@@ -261,6 +273,8 @@ BOOL CPluginManagerDlg::OnInitDialog()
 
 void CPluginManagerDlg::OnBnClickedCheckPluginUpdates()
 {
+    if (m_install.IsActive())
+        return;
     theApp.m_plugin_update.RefreshAsync();
     RefreshUpdateColumns();
 }
@@ -299,7 +313,6 @@ void CPluginManagerDlg::RefreshUpdateColumns()
     {
     case Status::Checking:
         status = CCommon::LoadText(TXT_PLUGIN_CHECKING);
-        SetTimer(CatalogTimer, 100, nullptr);
         break;
     case Status::Failed:
         status = CCommon::LoadText(catalog.has_snapshot ? TXT_PLUGIN_CHECK_FAILED_CACHED : TXT_PLUGIN_CHECK_FAILED);
@@ -311,29 +324,47 @@ void CPluginManagerDlg::RefreshUpdateColumns()
     default:
         break;
     }
-    if (catalog.status != Status::Checking)
-        KillTimer(CatalogTimer);
+    const bool installing = m_install.IsActive();
+    if (installing)
+        status = CCommon::LoadText(TXT_STORE_DOWNLOADING);
+    if (installing || catalog.status == Status::Checking)
+        SetTimer(UpdateTimer, 100, nullptr);
+    else
+        KillTimer(UpdateTimer);
     SetDlgItemText(IDC_PLUGIN_UPDATE_STATUS, status);
-    EnableDlgCtrl(IDC_PLUGIN_CHECK_UPDATES, catalog.status != Status::Checking);
     if (first_update >= 0 && m_list_ctrl.GetNextItem(-1, LVNI_SELECTED) < 0)
+    {
         m_list_ctrl.SetItemState(first_update, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+        m_list_ctrl.EnsureVisible(first_update, FALSE);
+    }
     EnableControl();
 }
 
 void CPluginManagerDlg::OnTimer(UINT_PTR timer)
 {
-    if (timer == CatalogTimer)
+    if (timer == UpdateTimer)
     {
-        if (theApp.m_plugin_update.GetStatus() != CPluginUpdateHelper::Status::Checking)
+        if (m_install.IsReady())
+        {
+            const auto result = m_install.Finish(theApp.m_plugin_update);
+            RefreshUpdateColumns();
+            if (result.error != nullptr)
+                ShowUpdateError(result.error);
+            else
+                SetDlgItemText(IDC_PLUGIN_UPDATE_STATUS, CCommon::LoadText(TXT_PLUGIN_PENDING_RESTART));
+        }
+        else if (!m_install.IsActive() && theApp.m_plugin_update.GetStatus() != CPluginUpdateHelper::Status::Checking)
             RefreshUpdateColumns();
         return;
     }
     CBaseDialog::OnTimer(timer);
 }
 
-void CPluginManagerDlg::OpenStore(const std::wstring& selected_file)
+void CPluginManagerDlg::OpenStore()
 {
-    CPluginStoreDlg store_dlg(this, selected_file);
+    if (m_install.IsActive())
+        return;
+    CPluginStoreDlg store_dlg(this);
     if (store_dlg.DoModal() == IDOK)
         RequestPluginRestart();
     else
@@ -342,10 +373,25 @@ void CPluginManagerDlg::OpenStore(const std::wstring& selected_file)
 
 void CPluginManagerDlg::OnBnClickedManagePluginUpdate()
 {
-    if (!m_selected_update_file.empty())
-        OpenStore(m_selected_update_file);
+    if (m_install.IsActive())
+        return;
+
+    const auto catalog = theApp.m_plugin_update.GetCatalog();
+    if (const auto* item = GetSelectedUpdate(catalog))
+    {
+        const auto* error = m_install.Start(*item, theApp.m_module_dir + L"plugins\\");
+        RefreshUpdateColumns();
+        if (error != nullptr)
+            ShowUpdateError(error);
+    }
     else if (theApp.m_plugin_update.HasPendingRestart())
         RequestPluginRestart();
+}
+
+void CPluginManagerDlg::ShowUpdateError(const wchar_t* error)
+{
+    SetDlgItemText(IDC_PLUGIN_UPDATE_STATUS, CCommon::LoadText(TXT_PLUGIN_UPDATE_FAILED));
+    MessageBox(CCommon::LoadText(error), nullptr, MB_ICONWARNING | MB_OK);
 }
 
 
@@ -496,6 +542,9 @@ namespace
 
 void CPluginManagerDlg::OnBnClickedInstallPluginButton()
 {
+    if (m_install.IsActive())
+        return;
+
     //多选需要较大的缓冲区：文件名以 \0 分隔，CFileDialog 默认缓冲不够
     std::vector<wchar_t> file_buffer(64 * 1024, 0);
     CFileDialog file_dialog(TRUE, L"dll", nullptr,

@@ -1,14 +1,13 @@
 ﻿#pragma once
 #include "BaseDialog.h"
 #include "PluginUpdateHelper.h"
-#include <future>
 
 //插件商店：列出云端清单里的插件，选择后下载到 plugins 目录
 class CPluginStoreDlg : public CBaseDialog
 {
     DECLARE_DYNAMIC(CPluginStoreDlg)
 public:
-    CPluginStoreDlg(CWnd* pParent = nullptr, const std::wstring& selected_file = {});
+    CPluginStoreDlg(CWnd* pParent = nullptr);
     virtual ~CPluginStoreDlg();
 
     enum { IDD = IDD_PLUGIN_STORE_DIALOG };
@@ -27,7 +26,6 @@ public:
     afx_msg void OnTimer(UINT_PTR timer);
 
 private:
-    struct Download;
     void RefreshList();
     void StartFetch();
     void FinishDownload();
@@ -42,6 +40,5 @@ private:
     CPluginUpdateHelper::Status m_catalog_status{ CPluginUpdateHelper::Status::Idle };
     bool m_has_snapshot{ false };
     int m_update_count{ 0 };
-    int m_download_index{ -1 };
-    std::future<std::shared_ptr<Download>> m_download;
+    CPluginPackageInstall m_install;
 };

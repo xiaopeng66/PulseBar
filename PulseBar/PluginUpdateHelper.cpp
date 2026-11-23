@@ -1,15 +1,20 @@
 ﻿#include "stdafx.h"
+#include <bcrypt.h>
 #include <climits>
 #include <cstdlib>
 #include <cstring>
 #include <optional>
 #include <thread>
+#include <urlmon.h>
 #include <wininet.h>
 #include "PluginUpdateHelper.h"
 #include "Common.h"
 #include "TinyXml2Helper.h"
+#include "language.h"
 
 #pragma comment(lib, "wininet.lib")
+#pragma comment(lib, "urlmon.lib")
+#pragma comment(lib, "bcrypt.lib")
 
 static bool VersionFromString(const std::string& version_str, std::vector<int>& versions)
 {
@@ -320,4 +325,246 @@ PluginInstallResult CommitPluginUpdate(const std::wstring& staged_path, const st
     //如果此时无法还原，下次启动会在加载插件前尝试恢复备份。
     ::MoveFileExW(backup_path.c_str(), target_path.c_str(), MOVEFILE_WRITE_THROUGH);
     return PluginInstallResult::Failed;
+}
+
+namespace
+{
+#ifndef IMAGE_FILE_MACHINE_ARM64EC
+#define IMAGE_FILE_MACHINE_ARM64EC 0xA641
+#endif
+
+    //读取 PE 的 Machine 字段：提前拒绝架构不匹配的插件，避免白重启一次
+    WORD GetPeMachineFromStore(const std::wstring& path)
+    {
+        HANDLE handle = ::CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+            FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (handle == INVALID_HANDLE_VALUE)
+            return 0;
+        BYTE buffer[4096]{};
+        DWORD read_size{};
+        const BOOL read_ok = ::ReadFile(handle, buffer, static_cast<DWORD>(sizeof(buffer)), &read_size, nullptr);
+        ::CloseHandle(handle);
+        if (!read_ok || read_size < sizeof(IMAGE_DOS_HEADER))
+            return 0;
+        IMAGE_DOS_HEADER dos_header{};
+        memcpy(&dos_header, buffer, sizeof(dos_header));
+        if (dos_header.e_magic != IMAGE_DOS_SIGNATURE || dos_header.e_lfanew < static_cast<LONG>(sizeof(dos_header)))
+            return 0;
+        const DWORD nt_offset = static_cast<DWORD>(dos_header.e_lfanew);
+        if (nt_offset >= read_size || read_size - nt_offset < sizeof(DWORD) + sizeof(IMAGE_FILE_HEADER))
+            return 0;
+        DWORD signature{};
+        memcpy(&signature, buffer + nt_offset, sizeof(signature));
+        if (signature != IMAGE_NT_SIGNATURE)
+            return 0;
+        IMAGE_FILE_HEADER header{};
+        memcpy(&header, buffer + nt_offset + sizeof(signature), sizeof(header));
+        return (header.Characteristics & IMAGE_FILE_DLL) ? header.Machine : 0;
+    }
+
+    WORD GetHostMachine()
+    {
+#if defined(_M_ARM64EC)
+        return IMAGE_FILE_MACHINE_ARM64EC;
+#elif defined(_M_ARM64)
+        return IMAGE_FILE_MACHINE_ARM64;
+#elif defined(_M_X64)
+        return IMAGE_FILE_MACHINE_AMD64;
+#else
+        return IMAGE_FILE_MACHINE_I386;
+#endif
+    }
+
+    //兼容性仍以下载文件的实际架构为准。
+    bool IsPluginArchCompatible(WORD machine, WORD host)
+    {
+        if (machine == host)
+            return true;
+#if defined(_M_ARM64EC)
+        if (machine == IMAGE_FILE_MACHINE_AMD64)
+            return true;
+#endif
+        return false;
+    }
+
+    //URLDownloadToFile 按二进制原样落盘，避免 ReadString 破坏 DLL
+    bool DownloadBinaryFile(const std::wstring& url, const std::wstring& save_path)
+    {
+        if (FAILED(::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED)))
+            return false;
+        const HRESULT hr = ::URLDownloadToFileW(nullptr, url.c_str(), save_path.c_str(), 0, nullptr);
+        ::CoUninitialize();
+        return SUCCEEDED(hr);
+    }
+
+    std::wstring ComputeSha256Hex(const std::wstring& file_path)
+    {
+        HANDLE file = ::CreateFileW(file_path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (file == INVALID_HANDLE_VALUE)
+            return std::wstring();
+
+        BCRYPT_ALG_HANDLE algorithm{};
+        if (!BCRYPT_SUCCESS(::BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0)))
+        {
+            ::CloseHandle(file);
+            return std::wstring();
+        }
+
+        DWORD hash_length{};
+        DWORD result_length{};
+        if (!BCRYPT_SUCCESS(::BCryptGetProperty(algorithm, BCRYPT_HASH_LENGTH,
+            reinterpret_cast<PUCHAR>(&hash_length), sizeof(hash_length), &result_length, 0))
+            || hash_length == 0)
+        {
+            ::BCryptCloseAlgorithmProvider(algorithm, 0);
+            ::CloseHandle(file);
+            return std::wstring();
+        }
+
+        BCRYPT_HASH_HANDLE hash{};
+        bool ok = BCRYPT_SUCCESS(::BCryptCreateHash(algorithm, &hash, nullptr, 0, nullptr, 0, 0));
+        std::vector<BYTE> buffer(64 * 1024);
+        DWORD read_size{};
+        while (ok)
+        {
+            ok = ::ReadFile(file, buffer.data(), static_cast<DWORD>(buffer.size()), &read_size, nullptr) != FALSE;
+            if (!ok || read_size == 0)
+                break;
+            ok = BCRYPT_SUCCESS(::BCryptHashData(hash, buffer.data(), read_size, 0));
+        }
+
+        std::vector<UCHAR> digest(hash_length);
+        if (ok)
+            ok = BCRYPT_SUCCESS(::BCryptFinishHash(hash, digest.data(), hash_length, 0));
+        if (hash != nullptr)
+            ::BCryptDestroyHash(hash);
+        ::BCryptCloseAlgorithmProvider(algorithm, 0);
+        ::CloseHandle(file);
+
+        if (!ok)
+            return std::wstring();
+        std::wstring hex;
+        wchar_t pair[4]{};
+        for (UCHAR byte : digest)
+        {
+            swprintf_s(pair, L"%02x", byte);
+            hex += pair;
+        }
+        return hex;
+    }
+
+}
+
+bool IsSafePluginFileName(const std::wstring& name)
+{
+    if (name.size() <= 4 || ::_wcsicmp(name.c_str() + name.size() - 4, L".dll") != 0
+        || name.find_first_of(L"\\/:*?\"<>|") != std::wstring::npos)
+        return false;
+
+    //Windows 保留设备名不能作为插件文件名。
+    auto stem = name.substr(0, name.find(L'.'));
+    const auto last = stem.find_last_not_of(L" \t\r\n\v\f");
+    stem.resize(last == std::wstring::npos ? 0 : last + 1);
+    if (::_wcsicmp(stem.c_str(), L"CON") == 0 || ::_wcsicmp(stem.c_str(), L"PRN") == 0
+        || ::_wcsicmp(stem.c_str(), L"AUX") == 0 || ::_wcsicmp(stem.c_str(), L"NUL") == 0)
+        return false;
+    return !(stem.size() == 4 && stem[3] >= L'1' && stem[3] <= L'9'
+        && (::_wcsnicmp(stem.c_str(), L"COM", 3) == 0 || ::_wcsnicmp(stem.c_str(), L"LPT", 3) == 0));
+}
+
+struct CPluginPackageInstall::Download
+{
+    std::wstring file_name;
+    PluginVersion version;
+    std::wstring target;
+    std::wstring path;
+    const wchar_t* error{ nullptr };
+
+    ~Download()
+    {
+        if (!path.empty())
+            ::DeleteFileW(path.c_str());
+    }
+};
+
+const wchar_t* CPluginPackageInstall::Start(const PluginStoreItem& item, const std::wstring& directory)
+{
+    if (IsActive())
+        return IDS_STORE_DOWNLOAD_FAILED;
+    if (!IsSafePluginFileName(item.file_name))
+        return IDS_STORE_INVALID_NAME;
+    if (item.download_path.empty())
+        return IDS_STORE_NO_DOWNLOAD;
+
+    std::wstring url = item.download_path;
+    if (url.rfind(L"http://", 0) != 0 && url.rfind(L"https://", 0) != 0)
+        url = CPluginUpdateHelper::GetStoreBaseUrl() + url;
+    try
+    {
+        //关闭发起更新的窗口会放弃安装，线程只持有临时文件并自行清理。
+        std::packaged_task<std::shared_ptr<Download>()> task([directory, url, item]() {
+            auto result = std::make_shared<Download>();
+            result->file_name = item.file_name;
+            result->version = item.version;
+            result->target = directory + item.file_name;
+            wchar_t temp_path[MAX_PATH]{};
+            ::CreateDirectoryW(directory.c_str(), nullptr);
+            if (!::GetTempFileNameW(directory.c_str(), L"pbd", 0, temp_path))
+            {
+                result->error = IDS_STORE_REPLACE_FAILED;
+                return result;
+            }
+            result->path = temp_path;
+            if (!DownloadBinaryFile(url, result->path))
+                result->error = IDS_STORE_DOWNLOAD_FAILED;
+            else if (!item.sha256.empty() && _wcsicmp(ComputeSha256Hex(result->path).c_str(), item.sha256.c_str()) != 0)
+                result->error = IDS_STORE_SHA_MISMATCH;
+            else if (const auto machine = GetPeMachineFromStore(result->path); machine == 0)
+                result->error = IDS_STORE_INVALID_DLL;
+            else if (!IsPluginArchCompatible(machine, GetHostMachine()))
+                result->error = IDS_STORE_ARCH_MISMATCH;
+            return result;
+        });
+        auto download = task.get_future();
+        std::thread(std::move(task)).detach();
+        m_download = std::move(download);
+        return nullptr;
+    }
+    catch (...)
+    {
+        return IDS_STORE_DOWNLOAD_FAILED;
+    }
+}
+
+bool CPluginPackageInstall::IsReady() const
+{
+    return IsActive() && m_download.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+}
+
+CPluginPackageInstall::Completion CPluginPackageInstall::Finish(CPluginUpdateHelper& updates)
+{
+    std::shared_ptr<Download> result;
+    try
+    {
+        result = m_download.get();
+    }
+    catch (...)
+    {
+        return { {}, IDS_STORE_DOWNLOAD_FAILED };
+    }
+    if (result->error != nullptr)
+        return { {}, result->error };
+
+    switch (CommitPluginUpdate(result->path, result->target))
+    {
+    case PluginInstallResult::Installed:
+        result->path.clear();
+        updates.MarkPendingRestart(result->file_name, result->version);
+        return { std::move(result->version), nullptr };
+    case PluginInstallResult::InUse:
+        return { {}, IDS_STORE_IN_USE };
+    default:
+        return { {}, IDS_STORE_REPLACE_FAILED };
+    }
 }

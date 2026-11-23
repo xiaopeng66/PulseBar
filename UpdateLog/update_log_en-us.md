@@ -1,6 +1,10 @@
 **[简体中文](./update_log.md) | [繁體中文](./update_log_zh-tw.md) | English**
 
 # PulseBar Update log
+## V1.1.5 (2026/11/23)
+
+- Update the selected plugin directly from Plugin Manager. The same window offers a restart when installation finishes.
+
 ## V1.1.4 (2026/11/21)
 
 - Fix plugin update detection and installation edge cases, and synchronize update-check state.
