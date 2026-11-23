@@ -7,27 +7,20 @@
 
 | 插件 | 版本 | 架构 | 下载 | SHA-256 |
 | --- | --- | --- | --- | --- |
-| Magpie Taskbar | 1.4.1 | x64 | [MagpieTaskbar.dll](https://github.com/xiaopeng66/PulseBar/releases/download/plugins-v1.4.1/MagpieTaskbar.dll) | `4be4d86fb832b1651b71ba141d37a740804e8cadf3b6bc8ccd60945f57659f89` |
+| Magpie Taskbar | 1.4.2 | x64 | [MagpieTaskbar.dll](https://github.com/xiaopeng66/PulseBar/releases/download/plugins-v1.4.2/MagpieTaskbar.dll) | `8487be8c96fc2e8598942117ee13245493a24acf5c07e91d1220a9dd7f453622` |
 
-插件二进制放在 [插件 Release](https://github.com/xiaopeng66/PulseBar/releases/tag/plugins-v1.4.1) 里，不进仓库，避免仓库随每次插件更新膨胀。`plugins_version.xml` 的 `download` 字段直接指向 Release 资产；旧版本 Release 和发布资产均保留。
+插件二进制放在 [插件 Release](https://github.com/xiaopeng66/PulseBar/releases/tag/plugins-v1.4.2) 里，不进仓库，避免仓库随每次插件更新膨胀。`plugins_version.xml` 的 `download` 字段直接指向 Release 资产；旧版本 Release 和发布资产均保留。
 
 「官方」指由本项目维护并随本仓库发布的插件。在软件插件管理列表里新增的「来源」列会显示「官方」字样；该标记来自清单的 `official="true"`，需要先成功拉取过清单（启动时或手动刷新后）。第三方插件不显示该标记。
 
 ## 检查更新
 
-软件**每次启动**都会拉取本目录的 [`plugins_version.xml`](plugins_version.xml)，把本地插件版本与表中版本比对：
-
-- 有新版：插件管理列表中该行显示「有更新，最新版本：x.y.z」
-- 已是最新：不显示提示
-- 拉取失败（断网、代理拦截）：静默保留上一次成功结果，不影响已安装插件
-
-更新源默认值随界面语言而定：**简体中文默认走 Gitee，其余语言默认走 GitHub**（可在「通用设置 → 更新源」切换）。
-
-> 注意：清单里的 `download` 若是绝对 GitHub 链接，即使用户把更新源切到 Gitee，插件文件仍从 GitHub 下载。网络无法访问 GitHub 时，请把 `download` 改成相对路径（相对仓库根），由 Gitee 镜像提供文件。
+打开「插件管理」时会自动读取 GitHub 的 [插件清单](plugins_version.xml)。也可点击左上角的「检查更新」重新检查。
 
 ## 安装与更新
 
-推荐用软件内置的「插件管理 → 安装插件…」或「更多插件下载」：选中的 DLL 会自动复制到 **PulseBar.exe 同级的 `plugins\`**（与加载目录一致），架构不符会提前跳过，并可一键重启加载。
+- 已安装：在「插件管理」中选中「可用更新」列有版本号的插件，点击右上角「更新」。安装完成后点击「重启生效」。
+- 第一次安装：打开「插件商店」选择插件，也可用「安装本地插件…」选择下载好的 DLL。文件会安装到 PulseBar.exe 同级的 `plugins` 目录。
 
 手动安装：
 
