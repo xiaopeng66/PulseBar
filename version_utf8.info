@@ -1,19 +1,16 @@
 ﻿<root>
-	<version>1.1.3</version>
+	<version>1.1.5</version>
 	<GitHub>
-		<link>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.3/PulseBar_V1.1.3_x86.zip</link>
-		<link_x64>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.3/PulseBar_V1.1.3_x64.zip</link_x64>
-		<link_arm64ec>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.3/PulseBar_V1.1.3_arm64ec.zip</link_arm64ec>
-		<link_without_temperature>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.3/PulseBar_V1.1.3_x86.zip</link_without_temperature>
-		<link_without_temperature_x64>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.3/PulseBar_V1.1.3_x64.zip</link_without_temperature_x64>
-		<link_without_temperature_arm64ec>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.3/PulseBar_V1.1.3_arm64ec.zip</link_without_temperature_arm64ec>
+		<link>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.5/PulseBar_V1.1.5_x86.zip</link>
+		<link_x64>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.5/PulseBar_V1.1.5_x64.zip</link_x64>
+		<link_arm64ec>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.5/PulseBar_V1.1.5_arm64ec.zip</link_arm64ec>
+		<link_without_temperature>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.5/PulseBar_V1.1.5_x86.zip</link_without_temperature>
+		<link_without_temperature_x64>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.5/PulseBar_V1.1.5_x64.zip</link_without_temperature_x64>
+		<link_without_temperature_arm64ec>https://github.com/xiaopeng66/PulseBar/releases/download/V1.1.5/PulseBar_V1.1.5_arm64ec.zip</link_without_temperature_arm64ec>
 	</GitHub>
 	<update_contents>
-		<contents_zh_cn>修复任务栏面板间歇性闪烁：正确识别窗口嵌入结果，避免成功嵌入后仍每隔 10 秒关闭并重建面板。
-保留真正嵌入失败时的恢复处理。</contents_zh_cn>
-		<contents_en>Fix intermittent taskbar panel flicker by correctly checking the window embedding result, avoiding unnecessary panel recreation every 10 seconds after successful embedding.
-Keep recovery for actual embedding failures.</contents_en>
-		<contents_zh_tw>修復工作列面板間歇性閃爍：正確判斷視窗嵌入結果，避免成功嵌入後仍每隔 10 秒關閉並重建面板。
-保留真正嵌入失敗時的復原處理。</contents_zh_tw>
+		<contents_zh_cn>插件管理支持直接更新选中的插件。下载、校验和安装完成后，可在原窗口点「重启生效」。</contents_zh_cn>
+		<contents_en>Update the selected plugin from Plugin Manager, then restart from the same window when installation finishes.</contents_en>
+		<contents_zh_tw>可在外掛管理直接更新所選外掛。下載、驗證及安裝完成後，在原視窗點「重新啟動以套用」。</contents_zh_tw>
 	</update_contents>
 </root>
