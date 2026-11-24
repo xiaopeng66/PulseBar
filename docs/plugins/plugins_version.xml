@@ -23,12 +23,12 @@
 <plugins>
     <plugin
         file_name="MagpieTaskbar.dll"
-        version="1.4.3"
+        version="1.4.4"
         display_name="Magpie Taskbar"
         author="xiaopeng66"
-        description="Magpie 多账号额度面板，支持关注筛选、查询与重置时间、双栏排序和撤销"
-        download="https://github.com/xiaopeng66/PulseBar/releases/download/plugins-v1.4.3/MagpieTaskbar.dll"
-        sha256="d71bce10994f9baf4545154a133ad3f5f94c7702f25b8f3c11f0ae202460b581"
+        description="Magpie 多账号额度面板，支持按屏幕扩高、紧凑列表、关注筛选及双栏排序"
+        download="https://github.com/xiaopeng66/PulseBar/releases/download/plugins-v1.4.4/MagpieTaskbar.dll"
+        sha256="0911883cde13b2ac83b85e9b4504fdf1431e16e62b3bad36655fdf4289d51c7c"
         arch="x64"
         official="true" />
 </plugins>
