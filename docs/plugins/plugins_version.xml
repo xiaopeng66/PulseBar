@@ -1,34 +1,68 @@
 <?xml version="1.0" encoding="utf-8"?>
+
 <!--
+
   PulseBar 官方插件清单
 
+
+
   软件会拉取本文件：既用于「检查更新」（按 file_name + version 比对），
+
   也用于插件商店列表（display_name / author / description / official）。
 
+
+
   字段说明：
+
     file_name    必填，必须与插件 DLL 文件名完全一致，用于匹配本地插件
+
     version      必填，点分数字（如 1.2.3），用于版本比较
+
     display_name 可选，商店里显示的名称
+
     author       可选，作者
+
     description  可选，一句话说明
+
     download     必填，DLL 下载地址：可写完整 http(s) 链接，或相对本仓库根目录的路径
+
     sha256       可选，DLL 的 SHA-256，下载后校验
+
     arch         可选，x64 / x86 / arm64ec，留空表示通用
+
     official     可选，true 表示官方插件，插件管理列表会显示「官方」角标
 
+
+
   插件二进制放在 GitHub Release 资产里（不进仓库），发布新版本时：
+
     1. 建一个 plugins-v<版本> 的 Release 并上传 DLL
+
     2. 更新本条目的 version / download / sha256
+
 -->
+
 <plugins>
+
     <plugin
+
         file_name="MagpieTaskbar.dll"
-        version="1.4.4"
+
+        version="1.4.5"
+
         display_name="Magpie Taskbar"
+
         author="xiaopeng66"
-        description="Magpie 多账号额度面板，支持按屏幕扩高、紧凑列表、关注筛选及双栏排序"
-        download="https://github.com/xiaopeng66/PulseBar/releases/download/plugins-v1.4.4/MagpieTaskbar.dll"
-        sha256="0911883cde13b2ac83b85e9b4504fdf1431e16e62b3bad36655fdf4289d51c7c"
+
+        description="Magpie 多账号额度面板，同步 NewAPI/Sub2API 账号开关并保留选择偏好"
+
+        download="https://github.com/xiaopeng66/PulseBar/releases/download/plugins-v1.4.5/MagpieTaskbar.dll"
+
+        sha256="dee463abd4e6ced5079378909c41b9f8cecfb4606ced3ffbbbdd0dbf46ff4806"
+
         arch="x64"
+
         official="true" />
+
 </plugins>
+
