@@ -7,9 +7,9 @@
 
 | 插件 | 版本 | 架构 | 下载 | SHA-256 |
 | --- | --- | --- | --- | --- |
-| Magpie Taskbar | 1.4.8 | x64 | [MagpieTaskbar.dll](https://github.com/xiaopeng66/PulseBar/releases/download/plugins-v1.4.8/MagpieTaskbar.dll) | `99f436e039aaf8cdcd905d7152569babc06ad71ed812f640fdd45beb5a6372ca` |
+| Magpie Taskbar | 1.4.9 | x64 | [MagpieTaskbar.dll](https://github.com/xiaopeng66/PulseBar/releases/download/plugins-v1.4.9/MagpieTaskbar.dll) | `5438dae4580628767f497f5b047d7cb3d79c1ba1046ce0bb4e926686347e9f2d` |
 
-插件二进制放在 [插件 Release](https://github.com/xiaopeng66/PulseBar/releases/tag/plugins-v1.4.8) 里，不进仓库，避免仓库随每次插件更新膨胀。`plugins_version.xml` 的 `download` 字段直接指向 Release 资产；旧版本 Release 和发布资产均保留。
+插件二进制放在 [插件 Release](https://github.com/xiaopeng66/PulseBar/releases/tag/plugins-v1.4.9) 里，不进仓库，避免仓库随每次插件更新膨胀。`plugins_version.xml` 的 `download` 字段直接指向 Release 资产；旧版本 Release 和发布资产均保留。
 
 「官方」指由本项目维护并随本仓库发布的插件。在软件插件管理列表里新增的「来源」列会显示「官方」字样；该标记来自清单的 `official="true"`，需要先成功拉取过清单（启动时或手动刷新后）。第三方插件不显示该标记。
 
