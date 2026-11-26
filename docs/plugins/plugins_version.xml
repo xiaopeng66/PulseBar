@@ -48,17 +48,17 @@
 
         file_name="MagpieTaskbar.dll"
 
-        version="1.4.7"
+        version="1.4.8"
 
         display_name="Magpie Taskbar"
 
         author="xiaopeng66"
 
-        description="Magpie 多账号额度面板，任务栏与左右面板统一切换余额与已用百分比"
+        description="Magpie 多账号额度面板，修复显示切换横移、重复刷新卡顿与后台读数同步"
 
-        download="https://github.com/xiaopeng66/PulseBar/releases/download/plugins-v1.4.7/MagpieTaskbar.dll"
+        download="https://github.com/xiaopeng66/PulseBar/releases/download/plugins-v1.4.8/MagpieTaskbar.dll"
 
-        sha256="de5bf2f4d6cc79297130fbee463da26c298f0c24f3717abf6fe997541790dd23"
+        sha256="99f436e039aaf8cdcd905d7152569babc06ad71ed812f640fdd45beb5a6372ca"
 
         arch="x64"
 
