@@ -48,17 +48,17 @@
 
         file_name="MagpieTaskbar.dll"
 
-        version="1.4.11"
+        version="1.4.12"
 
         display_name="Magpie Taskbar"
 
         author="xiaopeng66"
 
-        description="Magpie 多账号额度面板，统一警示金额与百分比字号并修复不可用标签和分组计数"
+        description="Magpie 多账号额度面板，支持立即读取本机缓存并标记旧额度的查询失败状态"
 
-        download="https://github.com/xiaopeng66/PulseBar/releases/download/plugins-v1.4.11/MagpieTaskbar.dll"
+        download="https://github.com/xiaopeng66/PulseBar/releases/download/plugins-v1.4.12/MagpieTaskbar.dll"
 
-        sha256="3b3abd24d0f1126032ceb1e02e2694ec8232ffbe53d40b2562ebae2913264fac"
+        sha256="d13e7f24862ef6e8960fab0c478dd23b60297bcfac120b6d5cc641ad34a6e463"
 
         arch="x64"
 
